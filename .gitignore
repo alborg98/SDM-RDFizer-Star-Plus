@@ -1,0 +1,25 @@
+# Virtual environments
+.venv/
+.direnv/
+output/
+artifacts/
+mapping.ttl
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+.vscode/extensions.json
+
+# Production session files
+CHAT_CONTEXT_RML_STAR_PLANNING.md
+
+# Actual data files and output files
+data/*
+config_*
+mapping_*
+config.ini
+scenarios/**/config.ini
+scenarios/**/mapping.ttl
