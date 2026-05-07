@@ -11,10 +11,12 @@ __pycache__/
 
 # macOS
 .DS_Store
-.vscode/extensions.json
+.vscode/
 
 # Production session files
 CHAT_CONTEXT_RML_STAR_PLANNING.md
+_main_baseline/
+optimized_*.log
 
 # Actual data files and output files
 data/*

@@ -1426,22 +1426,55 @@ def _flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flu
 	global flushed_equivalent_statement_group_ids
 	global cache_flush_debug_events
 
-	def _direct_asserted_consumers_completed(metadata):
+	def _direct_non_asserted_consumers_equivalence_ready(metadata):
 		"""
 		TM-CACHE-FLUSH
 
-		Allow an earlier TM-level flush only when every direct consumer is an
-		asserted TM and all of those asserted consumers have already completed in
-		the current execution order.
+		Allow certain direct non-asserted consumers to stop blocking an early TM
+		flush when they are single-POM equivalence aliases whose canonical asserted
+		owner slice has already completed.
 		"""
-		if metadata.get("direct_non_asserted_consumer_count", 0) > 0:
-			return False
+		direct_non_asserted_consumers = metadata.get("direct_non_asserted_consumers", [])
+		if not direct_non_asserted_consumers:
+			return True
 
+		triples_map_index = planning_context.get("triples_maps", {})
+		for consumer_id in direct_non_asserted_consumers:
+			consumer_metadata = triples_map_index.get(consumer_id)
+			if consumer_metadata is None:
+				return False
+			if not consumer_metadata.get("single_pom_non_asserted", False):
+				return False
+			if not consumer_metadata.get("equivalence_group_id"):
+				return False
+			if not consumer_metadata.get("equivalence_canonical_owner_asserted", False):
+				return False
+
+			canonical_owner_tm_id = consumer_metadata.get("equivalence_canonical_owner_tm_id")
+			if canonical_owner_tm_id is None:
+				return False
+			if canonical_owner_tm_id in remaining_execution_tm_ids:
+				return False
+
+		return True
+
+	def _direct_consumers_completion_ready(metadata):
+		"""
+		TM-CACHE-FLUSH
+
+		Allow an earlier TM-level flush only when every direct asserted consumer is
+		done and every direct non-asserted consumer is equivalence-backed by a
+		completed asserted owner slice.
+		"""
 		direct_asserted_consumers = metadata.get("direct_asserted_consumers", [])
-		if not direct_asserted_consumers:
+		direct_non_asserted_consumers = metadata.get("direct_non_asserted_consumers", [])
+		if not direct_asserted_consumers and not direct_non_asserted_consumers:
 			return False
 
-		return all(consumer_id not in remaining_execution_tm_ids for consumer_id in direct_asserted_consumers)
+		if not all(consumer_id not in remaining_execution_tm_ids for consumer_id in direct_asserted_consumers):
+			return False
+
+		return _direct_non_asserted_consumers_equivalence_ready(metadata)
 
 	with _time_metric("flush_completed_tm_caches"):
 		if not enable_level_cache_flush or planning_context is None:
@@ -1463,7 +1496,7 @@ def _flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flu
 			if flush_after_level is None:
 				continue
 
-			direct_consumer_completion_ready = _direct_asserted_consumers_completed(metadata)
+			direct_consumer_completion_ready = _direct_consumers_completion_ready(metadata)
 			if (
 				not direct_consumer_completion_ready
 				and min_remaining_level is not None
@@ -3254,7 +3287,8 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 										triples_list.append(triple)
 								else:
 									triples_list.append(triple)
-			subject_list = []
+			# Keep the resolved quoted-subject context alive across later POMs in
+			# the same TM. Only the object payload is POM-local here.
 			object_list = []
 		else:
 			continue

@@ -166,6 +166,7 @@ def _collect_nonasserted_statement_equivalence(triples_map_list, tm_index):
 			"equivalence_group_id": None,
 			"equivalence_canonical_owner_tm_id": None,
 			"equivalence_canonical_owner_po_index": None,
+			"equivalence_canonical_owner_asserted": False,
 		}
 		for tm_id in tm_index
 	}
@@ -243,6 +244,9 @@ def _collect_nonasserted_statement_equivalence(triples_map_list, tm_index):
 				per_tm[tm_id]["equivalence_group_id"] = group_id
 				per_tm[tm_id]["equivalence_canonical_owner_tm_id"] = matching_entry["tm_id"]
 				per_tm[tm_id]["equivalence_canonical_owner_po_index"] = matching_entry["po_index"]
+				per_tm[tm_id]["equivalence_canonical_owner_asserted"] = (
+					"NonAssertedTriplesMap" not in matching_entry["tm_type"]
+				)
 
 	equivalence_groups = []
 	for fingerprint, entries in fingerprint_index.items():
@@ -723,6 +727,16 @@ def build_planning_context(triples_map_list, tm_levels=None):
 		join_fields = _collect_join_fields(tm)
 		role = _infer_tm_role(metadata)
 		tm_consumers = _dedupe(consumed_by.get(tm_id, []))
+		direct_asserted_consumers = _dedupe(
+			consumer_id
+			for consumer_id in tm_consumers
+			if consumer_id in tm_levels and not tm_levels[consumer_id]["is_non_assertive"]
+		)
+		direct_non_asserted_consumers = _dedupe(
+			consumer_id
+			for consumer_id in tm_consumers
+			if consumer_id in tm_levels and tm_levels[consumer_id]["is_non_assertive"]
+		)
 		consumer_levels = [
 			tm_levels[consumer_id]["level"]
 			for consumer_id in tm_consumers
@@ -762,6 +776,10 @@ def build_planning_context(triples_map_list, tm_levels=None):
 			"join_fields": join_fields,
 			"consumed_by": tm_consumers,
 			"consumer_count": len(tm_consumers),
+			"direct_asserted_consumers": direct_asserted_consumers,
+			"direct_asserted_consumer_count": len(direct_asserted_consumers),
+			"direct_non_asserted_consumers": direct_non_asserted_consumers,
+			"direct_non_asserted_consumer_count": len(direct_non_asserted_consumers),
 			"quoted_reference_count": quoted_use_counts.get(tm_id, 0),
 			"cross_source_consumer_count": join_usage.get("cross_source_consumer_count", 0),
 			"same_source_consumer_count": join_usage.get("same_source_consumer_count", 0),
@@ -782,6 +800,7 @@ def build_planning_context(triples_map_list, tm_levels=None):
 			"equivalence_group_id": statement_equivalence.get(tm_id, {}).get("equivalence_group_id"),
 			"equivalence_canonical_owner_tm_id": statement_equivalence.get(tm_id, {}).get("equivalence_canonical_owner_tm_id"),
 			"equivalence_canonical_owner_po_index": statement_equivalence.get(tm_id, {}).get("equivalence_canonical_owner_po_index"),
+			"equivalence_canonical_owner_asserted": statement_equivalence.get(tm_id, {}).get("equivalence_canonical_owner_asserted", False),
 			"should_cache": should_cache,
 			"cache_kind": cache_kind,
 			"first_use_level": first_use_level,
