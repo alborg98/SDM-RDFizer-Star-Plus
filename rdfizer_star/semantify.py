@@ -54,6 +54,10 @@ user, password, port, host = "", "", "", ""
 # This join table stores materialized parent and quoted lookup groups.
 global join_table 
 join_table = {}
+# This staging table accumulates planner-guided quoted join indexes while a
+# producer TM is being scanned through the top-level exact-row path.
+global staged_join_table
+staged_join_table = {}
 # This table caches predicate-object helper structures built during parsing.
 global po_table
 po_table = {}
@@ -84,6 +88,10 @@ equivalent_join_cache = {}
 # This groups join-equivalence cache entries by canonical owner-POM group.
 global equivalent_join_cache_groups
 equivalent_join_cache_groups = {}
+# This staging table accumulates row-token equivalence join indexes while a
+# source is already being scanned through a safe full-row execution path.
+global staged_equivalent_join_cache
+staged_equivalent_join_cache = {}
 # This variable holds the active planner metadata for the current dataset.
 global active_planning_context
 active_planning_context = None
@@ -97,6 +105,10 @@ same_row_cache_min_reference_count = 2
 # This toggle enables quoted join-cache reuse in runtime code paths.
 global enable_join_quoted_cache
 enable_join_quoted_cache = False
+# This toggle controls whether planner-selected join indexes are prebuilt
+# eagerly before execution starts.
+global enable_eager_join_prebuild
+enable_eager_join_prebuild = True
 # This toggle enables owner-POM statement equivalence reuse.
 global enable_equivalent_statement_cache
 enable_equivalent_statement_cache = True
@@ -852,6 +864,17 @@ def _equivalent_statement_cache_set(group_id, owner_tm_id, owner_po_index, sourc
 	equivalent_statement_cache_groups.setdefault(str(group_id), set()).add(cache_key)
 
 
+def _equivalent_statement_cache_get_by_row_token(owner_tm_id, owner_po_index, runtime_row_token):
+	"""
+	TM-CACHE-EQUIVALENCE
+
+	Read one canonical owner-POM equivalence payload directly through the runtime
+	row token stored in the row-keyed equivalence cache.
+	"""
+	cache_key = (str(owner_tm_id), int(owner_po_index), runtime_row_token)
+	return cache_key, equivalent_statement_cache.get(cache_key)
+
+
 def _equivalent_join_cache_group_key(owner_tm_id, owner_po_index, join_fields):
 	"""
 	TM-CACHE-EQUIVALENCE
@@ -888,6 +911,43 @@ def _equivalent_join_cache_set(group_id, owner_tm_id, owner_po_index, join_field
 		equivalent_join_cache[group_key] = {}
 	equivalent_join_cache[group_key][lookup_key] = list(payload)
 	equivalent_join_cache_groups.setdefault(str(group_id), set()).add((group_key, lookup_key))
+
+
+def _resolve_equivalent_join_payload(owner_tm_id, owner_po_index, join_fields, join_value):
+	"""
+	TM-CACHE-EQUIVALENCE
+
+	Resolve one join-equivalence hit through the row-keyed equivalence cache.
+
+	Optimized runs store runtime row tokens in `equivalent_join_cache` so the
+	same canonical slice can be exposed in join-keyed form without duplicating the
+	payload already retained in `equivalent_statement_cache`.
+	"""
+	group_key, lookup_key, cached_entry = _equivalent_join_cache_get(
+		owner_tm_id,
+		owner_po_index,
+		join_fields,
+		join_value
+	)
+	if cached_entry is None:
+		return group_key, lookup_key, None
+
+	if isinstance(cached_entry, dict):
+		return group_key, lookup_key, cached_entry
+
+	payload = {}
+	for runtime_row_token in cached_entry:
+		_, cached_payload = _equivalent_statement_cache_get_by_row_token(
+			owner_tm_id,
+			owner_po_index,
+			runtime_row_token
+		)
+		if cached_payload is None:
+			return group_key, lookup_key, None
+		for triples in cached_payload:
+			payload[triples] = "subject"
+
+	return group_key, lookup_key, payload
 
 
 def _backfill_annotated_result_cache_if_eligible(triples_map_element, runtime_row_token, payload, access_context):
@@ -1058,6 +1118,179 @@ def _planning_join_signature_to_runtime_fields(join_signature):
 	return join_signature
 
 
+def _stage_mixed_access_join_indexes_for_row(triples_map_element, row, runtime_row_token):
+	"""
+	TM-CACHE-JOIN
+
+	While a mixed-access producer is already being scanned through the top-level
+	exact-row path, stage quoted join-index entries for its planner-known join
+	signatures so later cross-source access can reuse the same scan.
+	"""
+	if runtime_row_token is None:
+		return
+
+	metadata = _planning_tm_metadata(triples_map_element)
+	if metadata is None:
+		return
+	if metadata.get("same_source_consumer_count", 0) <= 0:
+		return
+	if metadata.get("cross_source_consumer_count", 0) <= 0:
+		return
+
+	runtime_join_fields_list = []
+	seen_signatures = set()
+	for join_signature in metadata.get("join_signatures", []):
+		runtime_join_fields = _planning_join_signature_to_runtime_fields(join_signature)
+		if runtime_join_fields is None:
+			continue
+		normalized_signature = _normalize_join_signature(runtime_join_fields)
+		if normalized_signature in seen_signatures:
+			continue
+		seen_signatures.add(normalized_signature)
+		runtime_join_fields_list.append(runtime_join_fields)
+
+	if not runtime_join_fields_list:
+		return
+
+	tm_stage = staged_join_table.setdefault(str(triples_map_element.triples_map_id), {})
+	for runtime_join_fields in runtime_join_fields_list:
+		join_value = _resolve_join_value_from_row(row, runtime_join_fields)
+		if join_value is None:
+			continue
+		join_key = _quoted_join_table_key(triples_map_element, runtime_join_fields)
+		stage_bucket = tm_stage.setdefault(join_key, {})
+		row_tokens = stage_bucket.setdefault(join_value, [])
+		if runtime_row_token not in row_tokens:
+			row_tokens.append(runtime_row_token)
+
+
+def _publish_staged_join_indexes_for_tm(triples_map):
+	"""
+	TM-CACHE-JOIN
+
+	Publish any planner-guided quoted join indexes staged during the producer's
+	top-level scan once that TM has fully completed.
+	"""
+	tm_stage = staged_join_table.pop(str(triples_map.triples_map_id), None)
+	if not tm_stage:
+		return
+
+	for join_key, staged_bucket in tm_stage.items():
+		live_bucket = join_table.setdefault(join_key, {})
+		for join_value, staged_row_tokens in staged_bucket.items():
+			live_entry = live_bucket.get(join_value)
+			if live_entry is None:
+				live_bucket[join_value] = list(staged_row_tokens)
+				continue
+			if not isinstance(live_entry, list):
+				continue
+			for runtime_row_token in staged_row_tokens:
+				if runtime_row_token not in live_entry:
+					live_entry.append(runtime_row_token)
+
+
+def _planning_equivalence_join_fields(group_id):
+	"""
+	TM-CACHE-EQUIVALENCE
+
+	Collect the planner-known cross-source join signatures used by members of one
+	equivalence group.
+
+	Only scalar signatures are staged eagerly, matching the current quoted join
+	index behavior.
+	"""
+	if active_planning_context is None or group_id is None:
+		return []
+
+	group_metadata = active_planning_context.get("statement_equivalence_group_index", {}).get(group_id)
+	if group_metadata is None:
+		return []
+
+	runtime_join_fields_list = []
+	seen_signatures = set()
+	for tm_id in group_metadata.get("tm_ids", []):
+		member_metadata = active_planning_context.get("triples_maps", {}).get(tm_id)
+		if member_metadata is None:
+			continue
+		if member_metadata.get("cross_source_consumer_count", 0) <= 0:
+			continue
+		for join_signature in member_metadata.get("join_signatures", []):
+			runtime_join_fields = _planning_join_signature_to_runtime_fields(join_signature)
+			if runtime_join_fields is None:
+				continue
+			normalized_signature = _normalize_join_signature(runtime_join_fields)
+			if normalized_signature in seen_signatures:
+				continue
+			seen_signatures.add(normalized_signature)
+			runtime_join_fields_list.append(runtime_join_fields)
+
+	return runtime_join_fields_list
+
+
+def _stage_equivalent_join_indexes_for_row(scan_tm_id, equivalence_metadata, row, runtime_row_token):
+	"""
+	TM-CACHE-EQUIVALENCE
+
+	While a source is already being scanned through a safe full-row path, stage
+	join-keyed access entries for any cross-source consumers of the same
+	equivalence group.
+
+	The staged structure stores runtime row tokens, and the payload itself stays
+	in `equivalent_statement_cache`.
+	"""
+	if runtime_row_token is None or equivalence_metadata is None:
+		return
+
+	runtime_join_fields_list = _planning_equivalence_join_fields(equivalence_metadata.get("group_id"))
+	if not runtime_join_fields_list:
+		return
+
+	tm_stage = staged_equivalent_join_cache.setdefault(str(scan_tm_id), {})
+	group_id = equivalence_metadata["group_id"]
+	owner_tm_id = equivalence_metadata["canonical_owner_tm_id"]
+	owner_po_index = equivalence_metadata["canonical_owner_po_index"]
+
+	for runtime_join_fields in runtime_join_fields_list:
+		join_value = _resolve_join_value_from_row(row, runtime_join_fields)
+		if join_value is None:
+			continue
+		group_key = _equivalent_join_cache_group_key(owner_tm_id, owner_po_index, runtime_join_fields)
+		lookup_key = _normalize_join_value(join_value)
+		stage_bucket = tm_stage.setdefault(group_key, {})
+		row_tokens = stage_bucket.setdefault(lookup_key, [])
+		if runtime_row_token not in row_tokens:
+			row_tokens.append(runtime_row_token)
+		equivalent_join_cache_groups.setdefault(str(group_id), set()).add((group_key, lookup_key))
+
+
+def _publish_staged_equivalent_join_indexes_for_tm(triples_map):
+	"""
+	TM-CACHE-EQUIVALENCE
+
+	Publish any staged join-keyed equivalence entries once the scanning TM has
+	finished its full-row execution path.
+	"""
+	global equivalent_join_cache_populates
+
+	tm_stage = staged_equivalent_join_cache.pop(str(triples_map.triples_map_id), None)
+	if not tm_stage:
+		return
+
+	for group_key, staged_bucket in tm_stage.items():
+		live_bucket = equivalent_join_cache.setdefault(group_key, {})
+		for lookup_key, staged_row_tokens in staged_bucket.items():
+			live_entry = live_bucket.get(lookup_key)
+			if live_entry is None:
+				live_bucket[lookup_key] = list(staged_row_tokens)
+				equivalent_join_cache_populates += 1
+				continue
+			if isinstance(live_entry, dict):
+				continue
+			for runtime_row_token in staged_row_tokens:
+				if runtime_row_token not in live_entry:
+					live_entry.append(runtime_row_token)
+
+
 def _materialize_producer_row_for_join_index(triples_map_element, triples_map_list, row, row_position):
 	"""
 	TM-CACHE-JOIN-MATERIALIZATION
@@ -1195,7 +1428,7 @@ def _prebuild_high_join_indexes(planning_context, triples_map_list):
 	global quoted_join_index_prebuilds
 	global quoted_join_index_prebuild_skips
 
-	if planning_context is None or not enable_join_quoted_cache:
+	if planning_context is None or not enable_join_quoted_cache or not enable_eager_join_prebuild:
 		return
 
 	with _time_metric("prebuild_high_join_indexes"):
@@ -1549,6 +1782,9 @@ def _mark_tm_complete_and_maybe_flush(triples_map, planning_context, remaining_e
 	Mark the current asserted TM as completed under the existing runtime order
 	and trigger conservative cache flushing.
 	"""
+	_publish_staged_join_indexes_for_tm(triples_map)
+	_publish_staged_equivalent_join_indexes_for_tm(triples_map)
+
 	if planning_context is None:
 		return
 
@@ -2508,7 +2744,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 						break
 					resolved_subject_payload = None
 					if alias_metadata is not None:
-						_, _, cached_subject_payload = _equivalent_join_cache_get(
+						_, _, cached_subject_payload = _resolve_equivalent_join_payload(
 							alias_metadata["canonical_owner_tm_id"],
 							alias_metadata["canonical_owner_po_index"],
 							join_fields,
@@ -2534,13 +2770,16 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 							join_value
 						)
 						if alias_metadata is not None and resolved_subject_payload:
+							row_tokens = join_table.get(join_key, {}).get(join_value)
+							if row_tokens is None:
+								row_tokens = []
 							_equivalent_join_cache_set(
 								alias_metadata["group_id"],
 								alias_metadata["canonical_owner_tm_id"],
 								alias_metadata["canonical_owner_po_index"],
 								join_fields,
 								join_value,
-								list(resolved_subject_payload)
+								list(row_tokens)
 							)
 							equivalent_join_cache_populates += 1
 					subject_list = resolved_subject_payload if resolved_subject_payload is not None else []
@@ -2769,7 +3008,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 							break
 						resolved_object_payload = None
 						if alias_metadata is not None:
-							_, _, cached_object_payload = _equivalent_join_cache_get(
+							_, _, cached_object_payload = _resolve_equivalent_join_payload(
 								alias_metadata["canonical_owner_tm_id"],
 								alias_metadata["canonical_owner_po_index"],
 								join_fields,
@@ -2795,13 +3034,16 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								join_value
 							)
 							if alias_metadata is not None and resolved_object_payload:
+								row_tokens = join_table.get(join_key, {}).get(join_value)
+								if row_tokens is None:
+									row_tokens = []
 								_equivalent_join_cache_set(
 									alias_metadata["group_id"],
 									alias_metadata["canonical_owner_tm_id"],
 									alias_metadata["canonical_owner_po_index"],
 									join_fields,
 									join_value,
-									list(resolved_object_payload)
+									list(row_tokens)
 								)
 								equivalent_join_cache_populates += 1
 						object_list = resolved_object_payload if resolved_object_payload is not None else []
@@ -3307,6 +3549,13 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 				)
 				equivalent_statement_cache_populates += 1
 				equivalent_statement_cache_owner_populates += 1
+				if no_inner_cycle and runtime_row_token is not None:
+					_stage_equivalent_join_indexes_for_row(
+						triples_map.triples_map_id,
+						owner_equivalence,
+						row,
+						runtime_row_token
+					)
 			if current_tm_alias_equivalence is not None and pom_index == 0:
 				_equivalent_statement_cache_set(
 					current_tm_alias_equivalence["group_id"],
@@ -3319,6 +3568,25 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 				)
 				equivalent_statement_cache_populates += 1
 				equivalent_statement_cache_alias_populates += 1
+				if no_inner_cycle and runtime_row_token is not None:
+					_stage_equivalent_join_indexes_for_row(
+						triples_map.triples_map_id,
+						current_tm_alias_equivalence,
+						row,
+						runtime_row_token
+					)
+	if no_inner_cycle and runtime_row_token is not None and triples_list:
+		_backfill_annotated_result_cache_if_eligible(
+			triples_map,
+			runtime_row_token,
+			triples_list,
+			"same_row_top_level_scan"
+		)
+		_stage_mixed_access_join_indexes_for_row(
+			triples_map,
+			row,
+			runtime_row_token
+		)
 	_record_tm_debug(
 		triples_map.triples_map_name,
 		debug_branch_label,
@@ -3374,6 +3642,8 @@ def semantify(config_path):
 	# separate from the same-row cache so join refactors can be isolated.
 	global enable_join_quoted_cache
 	enable_join_quoted_cache = config["datasets"].get("enable_join_quoted_cache", "no").lower() == "yes"
+	global enable_eager_join_prebuild
+	enable_eager_join_prebuild = config["datasets"].get("enable_eager_join_prebuild", "yes").lower() == "yes"
 	global enable_equivalent_statement_cache
 	enable_equivalent_statement_cache = config["datasets"].get("enable_equivalent_statement_cache", "yes").lower() == "yes"
 	# TM-CACHE-FLUSH:
@@ -3486,6 +3756,8 @@ def semantify(config_path):
 	global equivalent_statement_cache_groups
 	global equivalent_join_cache
 	global equivalent_join_cache_groups
+	global staged_join_table
+	global staged_equivalent_join_cache
 	global active_planning_context
 	annotated_result_cache = {}
 	annotated_result_cache_origins = {}
@@ -3493,6 +3765,8 @@ def semantify(config_path):
 	equivalent_statement_cache_groups = {}
 	equivalent_join_cache = {}
 	equivalent_join_cache_groups = {}
+	staged_join_table = {}
+	staged_equivalent_join_cache = {}
 	active_planning_context = None
 	_capture_memory_sample("run_start")
 

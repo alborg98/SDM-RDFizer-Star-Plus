@@ -17,6 +17,10 @@ __pycache__/
 CHAT_CONTEXT_RML_STAR_PLANNING.md
 _main_baseline/
 optimized_*.log
+baseline_equivalence_benchmark_10000_no_prebuild.log
+baseline_equivalence_cross_source_multilayer_10000_no_prebuild.log
+baseline_equivalence_owner_slice_flush_10000_no_prebuild.log
+baseline_equivalence_owner_slice_flush_10000_prebuild_on_fresh.log
 
 # Actual data files and output files
 data/*
