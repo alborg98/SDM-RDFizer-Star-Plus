@@ -29,3 +29,4 @@ mapping_*
 config.ini
 scenarios/**/config.ini
 scenarios/**/mapping.ttl
+dist/
