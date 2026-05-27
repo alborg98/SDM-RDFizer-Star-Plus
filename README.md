@@ -41,8 +41,6 @@ rdfizer_star/          Core engine
 run_rdfizer.py         Entry point
 requirements.txt       Dependencies
 docs/
-  architecture.png     System architecture diagram
   thesis/
     master_thesis.pdf  Full thesis
-dist/                  Benchmark bundle (Linux)
 ```
