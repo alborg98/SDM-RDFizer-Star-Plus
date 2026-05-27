@@ -8,11 +8,6 @@
 
 # Entrypoints.
 !run_rdfizer.py
-!visualize_rdf.py
-
-# Visualizer support assets.
-!lib/
-!lib/**
 
 # Engine source.
 !rdfizer_star/
@@ -20,15 +15,8 @@
 rdfizer_star/**/__pycache__/
 rdfizer_star/**/*.py[cod]
 
-# Keep one small runnable reference scenario in-repo.
-!scenarios/
-scenarios/*
-!scenarios/composite_quoted_probe/
-!scenarios/composite_quoted_probe/**
-scenarios/composite_quoted_probe/output/
-scenarios/composite_quoted_probe/results/
-scenarios/composite_quoted_probe/materialized/
-scenarios/composite_quoted_probe/**/__pycache__/
+# Scenarios: local development only, not tracked.
+scenarios/
 
 # Optional thesis slot: when you provide the PDF, place it here and it will be tracked.
 !docs/
