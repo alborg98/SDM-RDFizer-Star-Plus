@@ -1,0 +1,5 @@
+aid,userId,movieId,note
+a1,1,10,alpha
+a2,1,11,beta
+a3,1,12,missing
+a4,2,10,gamma

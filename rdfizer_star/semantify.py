@@ -20,7 +20,7 @@ import psycopg2
 import types
 import pandas as pd
 from .functions import *
-from .tm_levels import analyze_tm_levels, build_planning_context, format_tm_levels_summary, format_planning_context_summary
+from .tm_levels import analyze_tm_levels, build_planning_context
 
 try:
 	from triples_map import TriplesMap as tm
@@ -73,9 +73,6 @@ dic_table = {}
 # This cache stores canonical annotated results by producer TM and exact row token.
 global annotated_result_cache
 annotated_result_cache = {}
-# This table records which runtime path first populated each annotated-result entry.
-global annotated_result_cache_origins
-annotated_result_cache_origins = {}
 # This cache stores canonical owner-POM statement payloads for alias/owner reuse.
 global equivalent_statement_cache
 equivalent_statement_cache = {}
@@ -108,154 +105,22 @@ enable_join_quoted_cache = False
 # This toggle controls whether planner-selected join indexes are prebuilt
 # eagerly before execution starts.
 global enable_eager_join_prebuild
-enable_eager_join_prebuild = True
+enable_eager_join_prebuild = False
+# Master switch for the Star Plus runtime path.
+global enable_sdm_rdfizer_star_plus
+enable_sdm_rdfizer_star_plus = False
 # This toggle enables owner-POM statement equivalence reuse.
 global enable_equivalent_statement_cache
-enable_equivalent_statement_cache = True
+enable_equivalent_statement_cache = False
 # This toggle enables conservative level-based cache flushing.
 global enable_level_cache_flush
 enable_level_cache_flush = False
 # This toggle enables planner-aware asserted TM execution batching.
 global enable_level_execution_order
 enable_level_execution_order = False
-# This counter tracks safe runtime-token same-row key usage.
-global same_row_key_runtime_token_uses
-same_row_key_runtime_token_uses = 0
-# This counter tracks fallback same-row key normalization usage.
-global same_row_key_fallback_uses
-same_row_key_fallback_uses = 0
-# This toggle enables per-event cache flush debug printing.
-global show_cache_flush_debug
-show_cache_flush_debug = False
-# This counter tracks successful same-row quoted cache reuse.
-global same_row_cache_hits
-same_row_cache_hits = 0
-# This counter tracks same-row quoted cache misses before rebuilding.
-global same_row_cache_misses
-same_row_cache_misses = 0
-# This counter tracks exact annotated-result cache hits across quoted paths.
-global annotated_result_cache_hits
-annotated_result_cache_hits = 0
-# This counter tracks exact annotated-result cache misses across quoted paths.
-global annotated_result_cache_misses
-annotated_result_cache_misses = 0
-# This counter tracks exact annotated-result cache writes across quoted paths.
-global annotated_result_cache_writes
-annotated_result_cache_writes = 0
-# This counter tracks annotated-result cache writes originating from same-row recursion.
-global annotated_result_cache_same_row_writes
-annotated_result_cache_same_row_writes = 0
-# This counter tracks annotated-result cache writes originating from join-index builds.
-global annotated_result_cache_join_materialization_writes
-annotated_result_cache_join_materialization_writes = 0
-# This counter tracks annotated-result cache hits from same-row recursion.
-global annotated_result_cache_same_row_hits
-annotated_result_cache_same_row_hits = 0
-# This counter tracks annotated-result cache hits while materializing join indexes.
-global annotated_result_cache_join_materialization_hits
-annotated_result_cache_join_materialization_hits = 0
-# This counter tracks annotated-result cache hits during join-result resolution.
-global annotated_result_cache_join_resolution_hits
-annotated_result_cache_join_resolution_hits = 0
-# This counter tracks exact-row accesses that reused a payload first built on a different path.
-global annotated_result_cache_cross_path_hits
-annotated_result_cache_cross_path_hits = 0
-# This counter tracks join-resolution misses where a row token existed but the unified cache entry did not.
-global annotated_result_cache_join_resolution_misses
-annotated_result_cache_join_resolution_misses = 0
-# This counter tracks owner/alias equivalence cache hits.
-global equivalent_statement_cache_hits
-equivalent_statement_cache_hits = 0
-# This counter tracks owner/alias equivalence cache misses.
-global equivalent_statement_cache_misses
-equivalent_statement_cache_misses = 0
-# This counter tracks owner/alias equivalence cache populates.
-global equivalent_statement_cache_populates
-equivalent_statement_cache_populates = 0
-# This counter tracks owner-side owner-POM cache populates.
-global equivalent_statement_cache_owner_populates
-equivalent_statement_cache_owner_populates = 0
-# This counter tracks alias-side whole-TM cache populates.
-global equivalent_statement_cache_alias_populates
-equivalent_statement_cache_alias_populates = 0
-# This counter tracks alias late-comer whole-TM skips through equivalence.
-global equivalent_statement_cache_alias_hits
-equivalent_statement_cache_alias_hits = 0
-# This counter tracks owner late-comer POM skips through equivalence.
-global equivalent_statement_cache_owner_hits
-equivalent_statement_cache_owner_hits = 0
-# This counter tracks join-side equivalence cache hits.
-global equivalent_join_cache_hits
-equivalent_join_cache_hits = 0
-# This counter tracks join-side equivalence cache misses.
-global equivalent_join_cache_misses
-equivalent_join_cache_misses = 0
-# This counter tracks join-side equivalence cache populates.
-global equivalent_join_cache_populates
-equivalent_join_cache_populates = 0
-# This counter tracks quoted join-index groups prebuilt from planning metadata.
-global quoted_join_index_prebuilds
-quoted_join_index_prebuilds = 0
-# This counter tracks planning-selected join signatures skipped by prebuild.
-global quoted_join_index_prebuild_skips
-quoted_join_index_prebuild_skips = 0
-# This counter tracks planner-driven same-row cache skips.
-global planner_same_row_cache_skips
-planner_same_row_cache_skips = 0
-# This counter tracks planner-driven quoted join memo skips.
-global planner_join_cache_skips
-planner_join_cache_skips = 0
-# This counter tracks how many producer-level flush events ran.
-global level_cache_flush_events
-level_cache_flush_events = 0
-# This counter tracks how many same-row cache entries were flushed.
-global flushed_same_row_cache_entries
-flushed_same_row_cache_entries = 0
-# This counter tracks how many join-table groups were flushed.
-global flushed_join_table_groups
-flushed_join_table_groups = 0
-# This counter tracks how many exact annotated-result cache entries were flushed.
-global flushed_annotated_result_cache_entries
-flushed_annotated_result_cache_entries = 0
-# This counter tracks flushed equivalence statement entries.
-global flushed_equivalent_statement_cache_entries
-flushed_equivalent_statement_cache_entries = 0
-# This counter tracks flushed equivalence join entries.
-global flushed_equivalent_join_cache_entries
-flushed_equivalent_join_cache_entries = 0
 # This set tracks which equivalence groups were already flushed.
 global flushed_equivalent_statement_group_ids
 flushed_equivalent_statement_group_ids = set()
-# This list stores structured flush events for optional debug printing.
-global cache_flush_debug_events
-cache_flush_debug_events = []
-# These substring filters select which TMs get extra debug accumulation.
-global debug_tm_filters
-debug_tm_filters = []
-# This table stores aggregated per-TM debug counters for matching filters.
-global debug_tm_stats
-debug_tm_stats = {}
-# Profiling controls are intentionally split so timing and memory sampling can
-# be enabled independently. This keeps measurement scope explicit and avoids a
-# debug/reporting flag from implicitly changing unrelated profiler behavior.
-# This toggle enables the opt-in timing profiler output.
-global show_time_breakdown
-show_time_breakdown = False
-# This toggle enables the opt-in memory checkpoint profiler output.
-global show_memory_profile
-show_memory_profile = False
-# This table accumulates named timing metrics for the current run.
-global perf_time_stats
-perf_time_stats = {}
-# This list stores labeled memory checkpoints for the current run.
-global perf_memory_samples
-perf_memory_samples = []
-# This value stores the peak observed process RSS across checkpoints.
-global perf_memory_peak_bytes
-perf_memory_peak_bytes = 0
-# This flag records whether RSS sampling worked on the current platform.
-global perf_memory_supported
-perf_memory_supported = False
 # This string stores the extracted base IRI of the active mapping.
 global base
 base = ""
@@ -271,211 +136,16 @@ general_predicates = {"http://www.w3.org/2000/01/rdf-schema#subClassOf":"",
 
 
 def _record_time_metric(metric_name, elapsed_seconds):
-	"""
-	PROFILING-TIME
-
-	Accumulate elapsed time for a named runtime metric.
-
-	This helper is a no-op unless `show_time_breakdown` is enabled, so normal
-	runs do not pay repeated dictionary-update overhead for timing counters.
-	"""
-	if not show_time_breakdown:
-		return
-	stats = perf_time_stats.setdefault(metric_name, {"seconds": 0.0, "calls": 0})
-	stats["seconds"] += elapsed_seconds
-	stats["calls"] += 1
+	return
 
 
 @contextmanager
 def _time_metric(metric_name):
-	"""
-	PROFILING-TIME
-
-	Context manager wrapper for timing a code region under a named metric.
-
-	Using a context manager keeps the instrumentation readable around the new
-	cache/planner branches and guarantees the timing update happens even if the
-	region exits via an exception.
-	"""
-	if not show_time_breakdown:
-		yield
-		return
-	start = time.perf_counter()
-	try:
-		yield
-	finally:
-		_record_time_metric(metric_name, time.perf_counter() - start)
-
-
-def _get_process_memory_bytes():
-	"""
-	PROFILING-MEMORY
-
-	Return the current process RSS/working-set size in bytes when a supported
-	platform-specific mechanism is available.
-
-	Current implementation:
-	- Windows: `GetProcessMemoryInfo` working-set size
-	- Linux: `/proc/self/statm` resident pages
-
-	The function returns `None` when sampling is unsupported or a probe fails.
-	That keeps memory profiling optional and non-fatal.
-	"""
-	try:
-		if os.name == "nt":
-			import ctypes
-			from ctypes import wintypes
-
-			class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
-				_fields_ = [
-					("cb", wintypes.DWORD),
-					("PageFaultCount", wintypes.DWORD),
-					("PeakWorkingSetSize", ctypes.c_size_t),
-					("WorkingSetSize", ctypes.c_size_t),
-					("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-					("QuotaPagedPoolUsage", ctypes.c_size_t),
-					("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-					("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-					("PagefileUsage", ctypes.c_size_t),
-					("PeakPagefileUsage", ctypes.c_size_t),
-					("PrivateUsage", ctypes.c_size_t),
-				]
-
-			kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-			psapi = ctypes.WinDLL("psapi", use_last_error=True)
-			kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-			psapi.GetProcessMemoryInfo.argtypes = [
-				wintypes.HANDLE,
-				ctypes.POINTER(PROCESS_MEMORY_COUNTERS_EX),
-				wintypes.DWORD,
-			]
-			psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-
-			process = kernel32.GetCurrentProcess()
-			counters = PROCESS_MEMORY_COUNTERS_EX()
-			counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS_EX)
-			if psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb):
-				return int(counters.WorkingSetSize)
-			return None
-		if sys.platform.startswith("linux"):
-			with open("/proc/self/statm", "r", encoding="utf-8") as statm_file:
-				fields = statm_file.read().split()
-			if len(fields) > 1:
-				page_size = os.sysconf("SC_PAGE_SIZE")
-				return int(fields[1]) * int(page_size)
-			return None
-	except Exception:
-		return None
-	return None
+	yield
 
 
 def _capture_memory_sample(label):
-	"""
-	PROFILING-MEMORY
-
-	Record one labeled memory sample together with lightweight cache-size
-	context.
-
-	The stored cache/table sizes make the RSS samples easier to interpret during
-	analysis without requiring a second debug mode.
-	"""
-	global perf_memory_peak_bytes
-	global perf_memory_supported
-
-	if not show_memory_profile:
-		return
-
-	rss_bytes = _get_process_memory_bytes()
-	if rss_bytes is None:
-		return
-
-	perf_memory_supported = True
-	perf_memory_peak_bytes = max(perf_memory_peak_bytes, rss_bytes)
-	perf_memory_samples.append({
-		"label": label,
-		"rss_bytes": rss_bytes,
-		"annotated_result_cache_entries": len(annotated_result_cache),
-		"join_table_groups": len(join_table),
-		"dictionary_entries": len(dic_table),
-	})
-
-
-def _format_bytes(byte_count):
-	"""
-	PROFILING-MEMORY
-
-	Render a byte count in a compact human-readable unit for debug output.
-	"""
-	if byte_count is None:
-		return "n/a"
-	units = ["B", "KiB", "MiB", "GiB", "TiB"]
-	value = float(byte_count)
-	for unit in units:
-		if value < 1024.0 or unit == units[-1]:
-			return f"{value:.2f} {unit}"
-		value /= 1024.0
-
-
-def format_time_breakdown(total_runtime_seconds):
-	"""
-	PROFILING-TIME
-
-	Render the aggregated timing report for the current run.
-
-	Each metric includes:
-	- absolute elapsed time
-	- relative share of the whole run
-	- number of timed calls
-	- average time per call
-	"""
-	lines = ["Time breakdown:"]
-	if not perf_time_stats:
-		lines.append("  no time metrics recorded")
-		return "\n".join(lines)
-
-	lines.append(f"  total_runtime={total_runtime_seconds:.6f} seconds")
-	for metric_name in sorted(perf_time_stats):
-		stats = perf_time_stats[metric_name]
-		seconds = stats["seconds"]
-		calls = stats["calls"]
-		share = (seconds / total_runtime_seconds * 100.0) if total_runtime_seconds > 0 else 0.0
-		avg_ms = (seconds / calls * 1000.0) if calls > 0 else 0.0
-		lines.append(
-			f"  {metric_name}: {seconds:.6f} seconds | {share:.2f}% | calls={calls} | avg={avg_ms:.3f} ms"
-		)
-	return "\n".join(lines)
-
-
-def format_memory_profile():
-	"""
-	PROFILING-MEMORY
-
-	Render the memory-sampling report for the current run.
-
-	The report is intentionally checkpoint-based instead of allocation-trace-based
-	so it stays cheap enough for opt-in runtime diagnostics on the engine.
-	"""
-	lines = ["Memory profile:"]
-	if not show_memory_profile:
-		lines.append("  memory profiling disabled")
-		return "\n".join(lines)
-	if not perf_memory_supported:
-		lines.append("  process RSS sampling not supported on this platform")
-		return "\n".join(lines)
-
-	lines.append(f"  peak_rss={_format_bytes(perf_memory_peak_bytes)}")
-	if not perf_memory_samples:
-		lines.append("  no memory samples recorded")
-		return "\n".join(lines)
-
-	for sample in perf_memory_samples:
-		lines.append(
-			f"  {sample['label']}: rss={_format_bytes(sample['rss_bytes'])} | "
-			f"annotated_result_cache_entries={sample['annotated_result_cache_entries']} | "
-			f"join_table_groups={sample['join_table_groups']} | "
-			f"dic_entries={sample['dictionary_entries']}"
-		)
-	return "\n".join(lines)
+	return
 
 def release_PTT(triples_map,predicate_list):
 	for po in triples_map.predicate_object_maps_list:
@@ -621,69 +291,16 @@ def _annotated_result_cache_get(triples_map_element, runtime_row_token):
 	return annotated_result_cache.get(cache_key)
 
 
-def _annotated_result_cache_origin_label(access_context):
-	"""
-	TM-CACHE-ANNOTATED
-
-	Coarsen detailed call-site labels into stable origin/access classes so reuse
-	can be counted across different runtime paths without exploding the metric
-	surface.
-	"""
-	if access_context is None:
-		return "unknown"
-	if access_context.startswith("same_row"):
-		return "same_row"
-	if access_context == "join_materialization":
-		return "join_materialization"
-	if access_context == "join_resolution":
-		return "join_resolution"
-	return str(access_context)
-
-
-def _record_annotated_result_cache_hit(access_context, origin_label):
-	"""
-	TM-CACHE-ANNOTATED
-
-	Update detailed reuse counters for one exact-row cache hit.
-	"""
-	global annotated_result_cache_hits
-	global annotated_result_cache_same_row_hits
-	global annotated_result_cache_join_materialization_hits
-	global annotated_result_cache_join_resolution_hits
-	global annotated_result_cache_cross_path_hits
-
-	annotated_result_cache_hits += 1
-	access_label = _annotated_result_cache_origin_label(access_context)
-	if access_label == "same_row":
-		annotated_result_cache_same_row_hits += 1
-	elif access_label == "join_materialization":
-		annotated_result_cache_join_materialization_hits += 1
-	elif access_label == "join_resolution":
-		annotated_result_cache_join_resolution_hits += 1
-
-	if origin_label is not None and origin_label != access_label:
-		annotated_result_cache_cross_path_hits += 1
-
-
-def _annotated_result_cache_set(triples_map_element, runtime_row_token, payload, access_context):
+def _annotated_result_cache_set(triples_map_element, runtime_row_token, payload):
 	"""
 	TM-CACHE-ANNOTATED
 
 	Write one exact-row annotated-result cache entry.
 	"""
-	global annotated_result_cache_same_row_writes
-	global annotated_result_cache_join_materialization_writes
-
 	cache_key = _annotated_result_cache_key(triples_map_element, runtime_row_token)
 	if cache_key is None:
 		return
 	annotated_result_cache[cache_key] = list(payload)
-	origin_label = _annotated_result_cache_origin_label(access_context)
-	annotated_result_cache_origins[cache_key] = origin_label
-	if origin_label == "same_row":
-		annotated_result_cache_same_row_writes += 1
-	elif origin_label == "join_materialization":
-		annotated_result_cache_join_materialization_writes += 1
 
 
 def _get_or_build_annotated_result(triples_map_element, triples_map_list, delimiter, row, runtime_row_token, metric_name, access_context):
@@ -698,17 +315,9 @@ def _get_or_build_annotated_result(triples_map_element, triples_map_list, delimi
 	- otherwise materialize once through `semantify_file(...)`
 	- store the result under the canonical exact-row key for later reuse
 	"""
-	global annotated_result_cache_misses
-	global annotated_result_cache_writes
-
-	cache_key = _annotated_result_cache_key(triples_map_element, runtime_row_token)
 	cached_payload = _annotated_result_cache_get(triples_map_element, runtime_row_token)
 	if cached_payload is not None:
-		_record_annotated_result_cache_hit(access_context, annotated_result_cache_origins.get(cache_key))
 		return list(cached_payload), True
-
-	if runtime_row_token is not None:
-		annotated_result_cache_misses += 1
 
 	with _time_metric(metric_name):
 		materialized_triples = [
@@ -725,8 +334,7 @@ def _get_or_build_annotated_result(triples_map_element, triples_map_list, delimi
 		]
 
 	if runtime_row_token is not None:
-		_annotated_result_cache_set(triples_map_element, runtime_row_token, materialized_triples, access_context)
-		annotated_result_cache_writes += 1
+		_annotated_result_cache_set(triples_map_element, runtime_row_token, materialized_triples)
 
 	return materialized_triples, False
 
@@ -737,15 +345,10 @@ def _same_row_cache_key(triples_map_element, row, runtime_row_token=None):
 
 	Build the canonical same-row cache key for a quoted producer TM.
 	"""
-	global same_row_key_runtime_token_uses
-	global same_row_key_fallback_uses
-
 	with _time_metric("same_row_cache_key"):
 		if runtime_row_token is not None:
-			same_row_key_runtime_token_uses += 1
 			row_key = runtime_row_token
 		else:
-			same_row_key_fallback_uses += 1
 			row_key = _normalize_row_key(str(triples_map_element.data_source), _derive_row_identifier(row))
 		return (
 			str(triples_map_element.triples_map_id),
@@ -760,8 +363,6 @@ def _resolve_quoted_join_payload_from_tokens(triples_map_element, join_key, join
 	Resolve a quoted join result through exact producer row tokens when the join
 	index recorded them directly inside `join_table` during materialization.
 	"""
-	global annotated_result_cache_join_resolution_misses
-
 	join_entries = join_table.get(join_key)
 	if join_entries is None or join_value not in join_entries:
 		return None
@@ -774,12 +375,9 @@ def _resolve_quoted_join_payload_from_tokens(triples_map_element, join_key, join
 
 	payload = {}
 	for runtime_row_token in row_tokens:
-		cache_key = _annotated_result_cache_key(triples_map_element, runtime_row_token)
 		cached_payload = _annotated_result_cache_get(triples_map_element, runtime_row_token)
 		if cached_payload is None:
-			annotated_result_cache_join_resolution_misses += 1
 			return None
-		_record_annotated_result_cache_hit("join_resolution", annotated_result_cache_origins.get(cache_key))
 		for triples in cached_payload:
 			payload[triples] = "subject"
 
@@ -970,9 +568,7 @@ def _backfill_annotated_result_cache_if_eligible(triples_map_element, runtime_ro
 	cache_key = _annotated_result_cache_key(triples_map_element, runtime_row_token)
 	if cache_key is None or cache_key in annotated_result_cache:
 		return
-	_annotated_result_cache_set(triples_map_element, runtime_row_token, payload, access_context)
-	global annotated_result_cache_writes
-	annotated_result_cache_writes += 1
+	_annotated_result_cache_set(triples_map_element, runtime_row_token, payload)
 
 
 def _planning_effective_statement_tag(triples_map_element):
@@ -1089,9 +685,12 @@ def _quoted_join_table_key(triples_map_element, join_fields):
 	string key, so both the on-demand and prebuilt paths need one shared helper
 	to avoid duplicating the key logic.
 	"""
-	if isinstance(join_fields, list):
-		return triples_map_element.triples_map_id + "_" + join_fields[0]
-	return "quoted_" + triples_map_element.triples_map_id + "_" + join_fields
+	normalized_signature = _normalize_join_signature(join_fields)
+	if len(normalized_signature) == 1:
+		join_suffix = normalized_signature[0]
+	else:
+		join_suffix = child_list(normalized_signature)
+	return "quoted_" + triples_map_element.triples_map_id + "_" + join_suffix
 
 
 def _planning_join_signature_to_runtime_fields(join_signature):
@@ -1101,20 +700,19 @@ def _planning_join_signature_to_runtime_fields(join_signature):
 	Convert a planning-context join signature into the runtime field shape used
 	by the quoted join-index builder.
 
-	Phase 2 currently prebuilds only scalar signatures. Composite quoted join
-	signatures stay on the existing on-demand path until they get a dedicated
-	builder that matches the runtime semantics safely.
+	Return scalar signatures as scalars and composite signatures as ordered
+	field lists so runtime builders can share one quoted join-index path.
 	"""
 	if join_signature is None:
 		return None
 	if isinstance(join_signature, tuple):
 		if len(join_signature) == 1:
 			return join_signature[0]
-		return None
+		return list(join_signature)
 	if isinstance(join_signature, list):
 		if len(join_signature) == 1:
 			return join_signature[0]
-		return None
+		return list(join_signature)
 	return join_signature
 
 
@@ -1270,8 +868,6 @@ def _publish_staged_equivalent_join_indexes_for_tm(triples_map):
 	Publish any staged join-keyed equivalence entries once the scanning TM has
 	finished its full-row execution path.
 	"""
-	global equivalent_join_cache_populates
-
 	tm_stage = staged_equivalent_join_cache.pop(str(triples_map.triples_map_id), None)
 	if not tm_stage:
 		return
@@ -1282,7 +878,6 @@ def _publish_staged_equivalent_join_indexes_for_tm(triples_map):
 			live_entry = live_bucket.get(lookup_key)
 			if live_entry is None:
 				live_bucket[lookup_key] = list(staged_row_tokens)
-				equivalent_join_cache_populates += 1
 				continue
 			if isinstance(live_entry, dict):
 				continue
@@ -1425,9 +1020,6 @@ def _prebuild_high_join_indexes(planning_context, triples_map_list):
 	- only `high` join-strength producers are considered
 	- only scalar join signatures are prebuilt
 	"""
-	global quoted_join_index_prebuilds
-	global quoted_join_index_prebuild_skips
-
 	if planning_context is None or not enable_join_quoted_cache or not enable_eager_join_prebuild:
 		return
 
@@ -1447,7 +1039,6 @@ def _prebuild_high_join_indexes(planning_context, triples_map_list):
 			for join_signature in metadata.get("join_signatures", []):
 				runtime_join_fields = _planning_join_signature_to_runtime_fields(join_signature)
 				if runtime_join_fields is None:
-					quoted_join_index_prebuild_skips += 1
 					continue
 
 				join_key = _quoted_join_table_key(triples_map_element, runtime_join_fields)
@@ -1460,7 +1051,6 @@ def _prebuild_high_join_indexes(planning_context, triples_map_list):
 					"prebuild_high_join_index_group",
 					triples_map_list
 				)
-				quoted_join_index_prebuilds += 1
 
 
 def _collect_asserted_tm_execution_entries(sorted_sources, order_list):
@@ -1590,7 +1180,6 @@ def _flush_tm_cache_entries(tm_id):
 		annotated_result_keys = [cache_key for cache_key in annotated_result_cache if cache_key[0] == str(tm_id)]
 		for cache_key in annotated_result_keys:
 			annotated_result_cache.pop(cache_key, None)
-			annotated_result_cache_origins.pop(cache_key, None)
 
 		join_table_keys = [
 			join_key
@@ -1650,14 +1239,7 @@ def _flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flu
 	Conservatively flush caches once all still-to-run asserted TMs are above the
 	TM's transitive flush level.
 	"""
-	global level_cache_flush_events
-	global flushed_same_row_cache_entries
-	global flushed_join_table_groups
-	global flushed_annotated_result_cache_entries
-	global flushed_equivalent_statement_cache_entries
-	global flushed_equivalent_join_cache_entries
 	global flushed_equivalent_statement_group_ids
-	global cache_flush_debug_events
 
 	def _direct_non_asserted_consumers_equivalence_ready(metadata):
 		"""
@@ -1737,28 +1319,8 @@ def _flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flu
 			):
 				continue
 
-			flush_stats = _flush_tm_cache_entries(tm_id)
+			_flush_tm_cache_entries(tm_id)
 			flushed_tm_ids.add(tm_id)
-			level_cache_flush_events += 1
-			flushed_same_row_cache_entries += flush_stats["same_row_entries"]
-			flushed_join_table_groups += flush_stats["join_groups"]
-			flushed_annotated_result_cache_entries += flush_stats["annotated_result_entries"]
-			flushed_equivalent_statement_cache_entries += flush_stats.get("equivalent_statement_entries", 0)
-			flushed_equivalent_join_cache_entries += flush_stats.get("equivalent_join_entries", 0)
-			cache_flush_debug_events.append({
-				"tm_id": str(tm_id),
-				"tm_name": metadata["tm_name"],
-				"tm_level": metadata["level"],
-				"flush_after_level": flush_after_level,
-				"min_remaining_level": min_remaining_level,
-				"direct_consumer_completion_ready": direct_consumer_completion_ready,
-				"same_row_entries": flush_stats["same_row_entries"],
-				"join_groups": flush_stats["join_groups"],
-				"annotated_result_entries": flush_stats["annotated_result_entries"],
-				"equivalent_statement_entries": flush_stats.get("equivalent_statement_entries", 0),
-				"equivalent_join_entries": flush_stats.get("equivalent_join_entries", 0),
-			})
-			_capture_memory_sample(f"flush:{metadata['tm_name']}")
 
 		for group_id, group_metadata in planning_context.get("statement_equivalence_group_index", {}).items():
 			if group_id in flushed_equivalent_statement_group_ids:
@@ -1769,10 +1331,9 @@ def _flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flu
 			if min_remaining_level is not None and group_flush_after_level >= min_remaining_level:
 				continue
 
-			flushed_count = _flush_equivalent_group_cache_entries(group_id)
+			_flush_equivalent_group_cache_entries(group_id)
 			flushed_equivalent_statement_group_ids.add(group_id)
-			flushed_equivalent_statement_cache_entries += flushed_count
-			flushed_equivalent_join_cache_entries += _flush_equivalent_group_join_cache_entries(group_id)
+			_flush_equivalent_group_join_cache_entries(group_id)
 
 
 def _mark_tm_complete_and_maybe_flush(triples_map, planning_context, remaining_execution_tm_ids, flushed_tm_ids):
@@ -1792,174 +1353,6 @@ def _mark_tm_complete_and_maybe_flush(triples_map, planning_context, remaining_e
 	_flush_completed_tm_caches(planning_context, remaining_execution_tm_ids, flushed_tm_ids)
 
 
-def format_cache_flush_debug_events():
-	"""
-	TM-CACHE-FLUSH
-
-	Render per-event flush details collected during a run. This is intentionally
-	separate from the aggregate sanity output so normal runs can keep the summary
-	while debug runs opt into the event trace.
-	"""
-	lines = ["Cache flush debug:"]
-	if not cache_flush_debug_events:
-		lines.append("  no flush events recorded")
-		return "\n".join(lines)
-
-	for event in cache_flush_debug_events:
-		lines.append(
-			"  "
-			f"L{event['tm_level']} | {event['tm_name']} | flush_after={event['flush_after_level']} | "
-			f"min_remaining={event['min_remaining_level']} | same_row={event['same_row_entries']} | "
-			f"join_groups={event['join_groups']} | annotated_results={event['annotated_result_entries']} | "
-			f"eq_stmt={event.get('equivalent_statement_entries', 0)} | "
-			f"eq_join={event.get('equivalent_join_entries', 0)}"
-		)
-
-	return "\n".join(lines)
-
-
-def _tm_debug_enabled(triples_map_name):
-	return any(debug_filter in triples_map_name for debug_filter in debug_tm_filters)
-
-
-def _record_tm_debug(triples_map_name, branch_label, subject_present, object_present, object_list_size, subject_list_size, emitted_count):
-	if not debug_tm_filters or not _tm_debug_enabled(triples_map_name):
-		return
-
-	stats = debug_tm_stats.setdefault(triples_map_name, {
-		"rows": 0,
-		"branch_hits": 0,
-		"subject_present": 0,
-		"object_present": 0,
-		"object_list_rows": 0,
-		"object_list_items": 0,
-		"subject_list_rows": 0,
-		"subject_list_items": 0,
-		"triples_emitted": 0,
-		"branches": {}
-	})
-	stats["rows"] += 1
-	if subject_present:
-		stats["subject_present"] += 1
-	if object_present:
-		stats["object_present"] += 1
-	if object_list_size:
-		stats["object_list_rows"] += 1
-		stats["object_list_items"] += object_list_size
-	if subject_list_size:
-		stats["subject_list_rows"] += 1
-		stats["subject_list_items"] += subject_list_size
-	stats["triples_emitted"] += emitted_count
-	if branch_label:
-		stats["branch_hits"] += 1
-		stats["branches"][branch_label] = stats["branches"].get(branch_label, 0) + 1
-
-
-def format_tm_debug_stats():
-	lines = ["TM debug:"]
-	if not debug_tm_stats:
-		lines.append("  no TM debug data recorded")
-		return "\n".join(lines)
-
-	for tm_name in sorted(debug_tm_stats):
-		stats = debug_tm_stats[tm_name]
-		branch_summary = ", ".join(
-			f"{label}={count}"
-			for label, count in sorted(stats["branches"].items())
-		) or "none"
-		lines.append(
-			f"  {tm_name} | rows={stats['rows']} | branch_hits={stats['branch_hits']} | "
-			f"subject_present={stats['subject_present']} | object_present={stats['object_present']} | "
-			f"object_list_rows={stats['object_list_rows']} | object_list_items={stats['object_list_items']} | "
-			f"subject_list_rows={stats['subject_list_rows']} | subject_list_items={stats['subject_list_items']} | "
-			f"triples_emitted={stats['triples_emitted']} | branches={branch_summary}"
-		)
-	return "\n".join(lines)
-
-
-def format_cache_foundation_sanity(planning_context=None):
-	"""
-	TM-CACHE-SANITY
-
-	Render a compact read-only sanity summary for the current cache foundations.
-
-	Purpose:
-	- confirm that the forward and reverse dictionaries are in sync
-	- confirm that the empty cache structures exist and report their size
-	- optionally relate the current runtime state to the planning metadata
-
-	This helper is intentionally observational only. It does not mutate runtime
-	state and should remain safe to call during debugging runs.
-	"""
-	key_helpers_ready = (
-		_normalize_row_key("source.csv", 1) == ("source.csv", "1")
-		and _normalize_join_signature("claim_id") == ("claim_id",)
-		and _normalize_join_value(10) == "10"
-	)
-	join_key_helpers_ready = (
-		_quoted_join_table_key(types.SimpleNamespace(triples_map_id="TM_Claim"), "claim_id")
-		== "quoted_TM_Claim_claim_id"
-		and _normalize_join_value(10) == "10"
-		and _normalize_join_value(["10", "20"]) == ("10", "20")
-	)
-
-	lines = [
-		"Cache foundation sanity:",
-		f"  dic_entries={len(dic_table)}",
-		f"  annotated_result_cache_entries={len(annotated_result_cache)} | "
-		f"join_table_groups={len(join_table)} | "
-		f"equivalent_statement_cache_entries={len(equivalent_statement_cache)} | "
-		f"equivalent_join_cache_groups={len(equivalent_join_cache)}",
-		f"  key_helpers_ready={key_helpers_ready} | join_key_helpers_ready={join_key_helpers_ready}",
-		f"  same_row_cache_hits={same_row_cache_hits} | same_row_cache_misses={same_row_cache_misses}",
-		f"  same_row_key_runtime_tokens={same_row_key_runtime_token_uses} | same_row_key_fallbacks={same_row_key_fallback_uses}",
-		f"  annotated_result_cache_hits={annotated_result_cache_hits} | "
-		f"annotated_result_cache_misses={annotated_result_cache_misses} | "
-		f"annotated_result_cache_writes={annotated_result_cache_writes}",
-		f"  annotated_result_cache_same_row_hits={annotated_result_cache_same_row_hits} | "
-		f"annotated_result_cache_join_materialization_hits={annotated_result_cache_join_materialization_hits} | "
-		f"annotated_result_cache_join_resolution_hits={annotated_result_cache_join_resolution_hits}",
-		f"  annotated_result_cache_same_row_writes={annotated_result_cache_same_row_writes} | "
-		f"annotated_result_cache_join_materialization_writes={annotated_result_cache_join_materialization_writes} | "
-		f"annotated_result_cache_cross_path_hits={annotated_result_cache_cross_path_hits} | "
-		f"annotated_result_cache_join_resolution_misses={annotated_result_cache_join_resolution_misses}",
-		f"  equivalent_statement_cache_hits={equivalent_statement_cache_hits} | "
-		f"equivalent_statement_cache_misses={equivalent_statement_cache_misses} | "
-		f"equivalent_statement_cache_populates={equivalent_statement_cache_populates} | "
-		f"owner_populates={equivalent_statement_cache_owner_populates} | "
-		f"alias_populates={equivalent_statement_cache_alias_populates} | "
-		f"owner_hits={equivalent_statement_cache_owner_hits} | "
-		f"alias_hits={equivalent_statement_cache_alias_hits}",
-		f"  equivalent_join_cache_hits={equivalent_join_cache_hits} | "
-		f"equivalent_join_cache_misses={equivalent_join_cache_misses} | "
-		f"equivalent_join_cache_populates={equivalent_join_cache_populates}",
-		f"  quoted_join_index_prebuilds={quoted_join_index_prebuilds} | "
-		f"quoted_join_index_prebuild_skips={quoted_join_index_prebuild_skips}",
-		f"  planner_same_row_cache_skips={planner_same_row_cache_skips} | "
-		f"planner_join_cache_skips={planner_join_cache_skips}",
-		f"  level_cache_flush_events={level_cache_flush_events} | flushed_same_row_cache_entries={flushed_same_row_cache_entries} | "
-		f"flushed_join_table_groups={flushed_join_table_groups} | "
-		f"flushed_annotated_result_cache_entries={flushed_annotated_result_cache_entries} | "
-		f"flushed_equivalent_statement_cache_entries={flushed_equivalent_statement_cache_entries} | "
-		f"flushed_equivalent_join_cache_entries={flushed_equivalent_join_cache_entries}",
-		f"  same_row_cache_min_reference_count={same_row_cache_min_reference_count}",
-	]
-
-	if planning_context is not None:
-		row_candidates = sum(
-			1 for metadata in planning_context["triples_maps"].values()
-			if metadata["should_cache"] and metadata["cache_kind"] == "row"
-		)
-		join_candidates = sum(
-			1 for metadata in planning_context["triples_maps"].values()
-			if metadata["should_cache"] and metadata["cache_kind"] == "join"
-		)
-		lines.append(
-			f"  planned_cache_candidates={row_candidates + join_candidates} | "
-			f"row={row_candidates} | join={join_candidates}"
-		)
-
-	return "\n".join(lines)
 
 def _resolve_join_value_from_row(row, join_fields):
 	"""
@@ -2122,7 +1515,6 @@ def hash_maker(parent_data, parent_subject, child_object, quoted, triples_map_li
 								value = "<" + value + ">"
 							hash_table.update({row[child_object.parent[0]] : {value : "object"}})
 		else:
-			join_id = _quoted_join_table_key(parent_subject, child_object.child)
 			# TM-CACHE-JOIN:
 			# Build quoted join indexes from safe producer row tokens while
 			# materializing the exact annotated payload once. Using
@@ -2140,10 +1532,7 @@ def hash_maker(parent_data, parent_subject, child_object, quoted, triples_map_li
 					hash_table[join_value] = []
 				if runtime_row_token not in hash_table[join_value]:
 					hash_table[join_value].append(runtime_row_token)
-	if isinstance(child_object.child,list):
-		join_id = parent_subject.triples_map_id + "_" + child_object.child[0]
-	else:
-		join_id = "quoted_" + parent_subject.triples_map_id + "_" + child_object.child
+	join_id = _quoted_join_table_key(parent_subject, child_object.child)
 	join_table.update({join_id : hash_table})
 
 def hash_maker_list(parent_data, parent_subject, child_object):
@@ -2265,6 +1654,23 @@ def _normalize_mapping_type(mappings_type):
 	return mappings_type_str
 
 
+def _append_unique_join_field(join_fields, value):
+	if value in (None, "None"):
+		return
+
+	normalized_value = str(value)
+	if normalized_value not in join_fields:
+		join_fields.append(normalized_value)
+
+
+def _collapse_join_fields(join_fields):
+	if not join_fields:
+		return None
+	if len(join_fields) == 1:
+		return join_fields[0]
+	return list(join_fields)
+
+
 def _build_triples_map_from_query_results(mapping_graph, mapping_query_prepared, triples_map_id):
 	"""
 	TM-PARSER-DEFAULT-ASSERTED
@@ -2280,6 +1686,14 @@ def _build_triples_map_from_query_results(mapping_graph, mapping_query_prepared,
 		return None
 
 	result_triples_map = mapping_query_prepared_results[0]
+	subject_child_fields = []
+	subject_parent_fields = []
+	for result_row in mapping_query_prepared_results:
+		if result_row.subject_quoted != None:
+			_append_unique_join_field(subject_child_fields, result_row.subject_child_value)
+			_append_unique_join_field(subject_parent_fields, result_row.subject_parent_value)
+	subject_child_value = _collapse_join_fields(subject_child_fields)
+	subject_parent_value = _collapse_join_fields(subject_parent_fields)
 
 	if result_triples_map.subject_template != None:
 		if result_triples_map.rdf_class is None:
@@ -2305,14 +1719,15 @@ def _build_triples_map_from_query_results(mapping_graph, mapping_query_prepared,
 	elif result_triples_map.subject_quoted != None:
 		if result_triples_map.rdf_class is None:
 			reference, condition = string_separetion(str(result_triples_map.subject_quoted))
-			subject_map = tm.SubjectMap(str(result_triples_map.subject_quoted), condition, "quoted triples map", result_triples_map.subject_parent_value, result_triples_map.subject_child_value, [result_triples_map.rdf_class], result_triples_map.termtype, [result_triples_map.graph])
+			subject_map = tm.SubjectMap(str(result_triples_map.subject_quoted), condition, "quoted triples map", subject_parent_value, subject_child_value, [result_triples_map.rdf_class], result_triples_map.termtype, [result_triples_map.graph])
 		else:
 			reference, condition = string_separetion(str(result_triples_map.subject_quoted))
-			subject_map = tm.SubjectMap(str(result_triples_map.subject_quoted), condition, "quoted triples map", result_triples_map.subject_parent_value, result_triples_map.subject_child_value, [str(result_triples_map.rdf_class)], result_triples_map.termtype, [result_triples_map.graph])
+			subject_map = tm.SubjectMap(str(result_triples_map.subject_quoted), condition, "quoted triples map", subject_parent_value, subject_child_value, [str(result_triples_map.rdf_class)], result_triples_map.termtype, [result_triples_map.graph])
 	else:
 		return None
 
 	join_predicate = {}
+	quoted_join_predicate = {}
 	predicate_object_maps_list = []
 	predicate_object_graph = {}
 	for result_predicate_object_map in mapping_query_prepared_results:
@@ -2339,7 +1754,30 @@ def _build_triples_map_from_query_results(mapping_graph, mapping_query_prepared,
 		elif result_predicate_object_map.object_reference != None:
 			object_map = tm.ObjectMap("reference", str(result_predicate_object_map.object_reference), str(result_predicate_object_map.object_datatype), "None", "None", result_predicate_object_map.term, result_predicate_object_map.language,result_predicate_object_map.language_value)
 		elif result_predicate_object_map.object_quoted != None:
-			object_map = tm.ObjectMap("quoted triples map", str(result_predicate_object_map.object_quoted), str(result_predicate_object_map.object_datatype), str(result_predicate_object_map.object_child_value), str(result_predicate_object_map.object_parent_value), result_predicate_object_map.term, result_predicate_object_map.language,result_predicate_object_map.language_value)
+			quoted_key = (
+				predicate_map.mapping_type,
+				predicate_map.value,
+				predicate_map.condition,
+				str(result_predicate_object_map.object_quoted),
+				str(result_predicate_object_map.object_datatype),
+				str(result_predicate_object_map.term),
+				str(result_predicate_object_map.language),
+				str(result_predicate_object_map.language_value),
+			)
+			if quoted_key not in quoted_join_predicate:
+				quoted_join_predicate[quoted_key] = {
+					"predicate": predicate_map,
+					"triples_map": str(result_predicate_object_map.object_quoted),
+					"datatype": str(result_predicate_object_map.object_datatype),
+					"term": result_predicate_object_map.term,
+					"language": result_predicate_object_map.language,
+					"language_value": result_predicate_object_map.language_value,
+					"childs": [],
+					"parents": [],
+				}
+			_append_unique_join_field(quoted_join_predicate[quoted_key]["childs"], result_predicate_object_map.object_child_value)
+			_append_unique_join_field(quoted_join_predicate[quoted_key]["parents"], result_predicate_object_map.object_parent_value)
+			join = False
 		elif result_predicate_object_map.object_parent_triples_map != None:
 			if predicate_map.value + " " + str(result_predicate_object_map.object_parent_triples_map) not in join_predicate:
 				join_predicate[predicate_map.value + " " + str(result_predicate_object_map.object_parent_triples_map)] = {"predicate":predicate_map, "childs":[str(result_predicate_object_map.child_value)], "parents":[str(result_predicate_object_map.parent_value)], "triples_map":str(result_predicate_object_map.object_parent_triples_map)}
@@ -2358,6 +1796,19 @@ def _build_triples_map_from_query_results(mapping_graph, mapping_query_prepared,
 		for jp in join_predicate.keys():
 			object_map = tm.ObjectMap("parent triples map", join_predicate[jp]["triples_map"], str(result_predicate_object_map.object_datatype), join_predicate[jp]["childs"], join_predicate[jp]["parents"],result_predicate_object_map.term, result_predicate_object_map.language,result_predicate_object_map.language_value)
 			predicate_object_maps_list += [tm.PredicateObjectMap(join_predicate[jp]["predicate"], object_map,predicate_object_graph)]
+	if quoted_join_predicate:
+		for quoted_object_metadata in quoted_join_predicate.values():
+			object_map = tm.ObjectMap(
+				"quoted triples map",
+				quoted_object_metadata["triples_map"],
+				quoted_object_metadata["datatype"],
+				_collapse_join_fields(quoted_object_metadata["childs"]),
+				_collapse_join_fields(quoted_object_metadata["parents"]),
+				quoted_object_metadata["term"],
+				quoted_object_metadata["language"],
+				quoted_object_metadata["language_value"]
+			)
+			predicate_object_maps_list += [tm.PredicateObjectMap(quoted_object_metadata["predicate"], object_map,predicate_object_graph)]
 
 	return tm.TriplesMap(
 		str(result_triples_map.triples_map_id),
@@ -2553,26 +2004,6 @@ def mapping_parser(mapping_file):
 	return triples_map_list
 
 def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle, runtime_row_token=None):
-	global same_row_cache_hits
-	global same_row_cache_misses
-	global same_row_key_runtime_token_uses
-	global same_row_key_fallback_uses
-	global planner_same_row_cache_skips
-	global planner_join_cache_skips
-	global equivalent_statement_cache_hits
-	global equivalent_statement_cache_misses
-	global equivalent_statement_cache_populates
-	global equivalent_statement_cache_owner_populates
-	global equivalent_statement_cache_alias_populates
-	global equivalent_statement_cache_alias_hits
-	global equivalent_statement_cache_owner_hits
-	global equivalent_join_cache_hits
-	global equivalent_join_cache_misses
-	global equivalent_join_cache_populates
-	semantify_file_start = time.perf_counter() if show_time_breakdown else None
-	debug_branch_label = None
-	debug_object_list_size = 0
-	debug_subject_list_size = 0
 	object_list = []
 	subject_list = []
 	triples_list = []
@@ -2601,18 +2032,13 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 				runtime_row_token
 			)
 			if cached_alias_payload is not None:
-				equivalent_statement_cache_hits += 1
-				equivalent_statement_cache_alias_hits += 1
 				_backfill_annotated_result_cache_if_eligible(
 					triples_map,
 					runtime_row_token,
 					cached_alias_payload,
 					"equivalence"
 				)
-				if semantify_file_start is not None:
-					_record_time_metric("semantify_file_total", time.perf_counter() - semantify_file_start)
 				return list(cached_alias_payload)
-			equivalent_statement_cache_misses += 1
 	if triples_map.subject_map.subject_mapping_type == "template":
 		subject_value = string_substitution(triples_map.subject_map.value, "{(.+?)}", row, "subject", ignore, triples_map.iterator)
 		if triples_map.subject_map.term_type is None:
@@ -2751,10 +2177,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 							join_value
 						)
 						if cached_subject_payload is not None:
-							equivalent_join_cache_hits += 1
 							resolved_subject_payload = list(cached_subject_payload)
-						else:
-							equivalent_join_cache_misses += 1
 					if resolved_subject_payload is None:
 						join_key = _ensure_quoted_join_index(
 							triples_map_element,
@@ -2762,8 +2185,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 							"quoted_subject_join_build",
 							triples_map_list
 						)
-						if not _should_use_join_cache(triples_map_element) and enable_join_quoted_cache:
-							planner_join_cache_skips += 1
 						resolved_subject_payload = _resolve_quoted_join_payload_from_tokens(
 							triples_map_element,
 							join_key,
@@ -2781,11 +2202,10 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								join_value,
 								list(row_tokens)
 							)
-							equivalent_join_cache_populates += 1
 					subject_list = resolved_subject_payload if resolved_subject_payload is not None else []
 			else:
 				if _should_use_same_row_cache(triples_map_element):
-					subject_list, cache_hit = _get_or_build_annotated_result(
+					subject_list, _ = _get_or_build_annotated_result(
 						triples_map_element,
 						triples_map_list,
 						delimiter,
@@ -2794,13 +2214,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 						"quoted_subject_same_row_miss_build",
 						"same_row"
 					)
-					if cache_hit:
-						same_row_cache_hits += 1
-					else:
-						same_row_cache_misses += 1
 				else:
-					if enable_same_row_quoted_cache:
-						planner_same_row_cache_skips += 1
 					with _time_metric("quoted_subject_recursive_no_cache"):
 						subject_list = [
 							triples
@@ -2880,11 +2294,8 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 					runtime_row_token
 				)
 				if cached_owner_payload is not None:
-					equivalent_statement_cache_hits += 1
-					equivalent_statement_cache_owner_hits += 1
 					triples_list.extend(list(cached_owner_payload))
 					continue
-				equivalent_statement_cache_misses += 1
 		# Initialize per-POM object state defensively so unmatched parent/quoted
 		# branches leave a clean `None`/empty value instead of reusing or missing
 		# prior state.
@@ -3015,10 +2426,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								join_value
 							)
 							if cached_object_payload is not None:
-								equivalent_join_cache_hits += 1
 								resolved_object_payload = list(cached_object_payload)
-							else:
-								equivalent_join_cache_misses += 1
 						if resolved_object_payload is None:
 							join_key = _ensure_quoted_join_index(
 								triples_map_element,
@@ -3026,8 +2434,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								"quoted_object_join_build",
 								triples_map_list
 							)
-							if not _should_use_join_cache(triples_map_element) and enable_join_quoted_cache:
-								planner_join_cache_skips += 1
 							resolved_object_payload = _resolve_quoted_join_payload_from_tokens(
 								triples_map_element,
 								join_key,
@@ -3045,12 +2451,10 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 									join_value,
 									list(row_tokens)
 								)
-								equivalent_join_cache_populates += 1
 						object_list = resolved_object_payload if resolved_object_payload is not None else []
-						debug_object_list_size = max(debug_object_list_size, len(object_list))
 				else:
 					if _should_use_same_row_cache(triples_map_element):
-						object_list, cache_hit = _get_or_build_annotated_result(
+						object_list, _ = _get_or_build_annotated_result(
 							triples_map_element,
 							triples_map_list,
 							delimiter,
@@ -3059,15 +2463,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 							"quoted_object_same_row_miss_build",
 							"same_row"
 						)
-						if cache_hit:
-							same_row_cache_hits += 1
-							debug_object_list_size = max(debug_object_list_size, len(object_list))
-						else:
-							same_row_cache_misses += 1
-							debug_object_list_size = max(debug_object_list_size, len(object_list))
 					else:
-						if enable_same_row_quoted_cache:
-							planner_same_row_cache_skips += 1
 						with _time_metric("quoted_object_recursive_no_cache"):
 							object_list = [
 								triples
@@ -3081,12 +2477,10 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								)
 								if triples is not None
 							]
-						debug_object_list_size = max(debug_object_list_size, len(object_list))
 				object = None
 				break
 		elif predicate_object_map.object_map.mapping_type == "parent triples map":
 			if subject != None:
-				debug_branch_label = "parent_triples_map"
 				for triples_map_inner in triples_map_list:
 					if triples_map_inner.triples_map_id == predicate_object_map.object_map.value:
 						if triples_map.data_source != triples_map_inner.data_source:
@@ -3130,10 +2524,7 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								if sublist(predicate_object_map.object_map.child,row.keys()):
 									if child_list_value(predicate_object_map.object_map.child,row) in join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)]:
 										object_list = join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)][child_list_value(predicate_object_map.object_map.child,row)]
-										debug_object_list_size = max(debug_object_list_size, len(object_list))
-										debug_branch_label = "parent_triples_map_hit"
 									else:
-										debug_branch_label = "parent_triples_map_lookup_miss"
 										if no_update:
 											if str(triples_map_inner.file_format).lower() == "csv" or triples_map_inner.file_format == "JSONPath":
 												with open(str(triples_map_inner.data_source), "r") as input_file_descriptor:
@@ -3157,11 +2548,8 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 																hash_maker(data[list(data.keys())[0]], triples_map_inner, predicate_object_map.object_map,"", triples_map_list)
 											if child_list_value(predicate_object_map.object_map.child,row) in join_table[triples_map_inner.triples_map_id + "_" + predicate_object_map.object_map.child[0]]:
 												object_list = join_table[triples_map_inner.triples_map_id + "_" + predicate_object_map.object_map.child[0]][row[predicate_object_map.object_map.child[0]]]
-												debug_object_list_size = max(debug_object_list_size, len(object_list))
-												debug_branch_label = "parent_triples_map_hit"
 											else:
 												object_list = []
-												debug_branch_label = "parent_triples_map_lookup_miss"
 											no_update = False
 								object = None
 							else:
@@ -3194,11 +2582,8 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								if sublist(predicate_object_map.object_map.child,row.keys()):
 									if child_list_value(predicate_object_map.object_map.child,row) in join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)]:
 										object_list = join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)][child_list_value(predicate_object_map.object_map.child,row)]
-										debug_object_list_size = max(debug_object_list_size, len(object_list))
-										debug_branch_label = "parent_triples_map_hit"
 									else:
 										object_list = []
-										debug_branch_label = "parent_triples_map_lookup_miss"
 								object = None
 						else:
 							if predicate_object_map.object_map.parent != None:
@@ -3217,11 +2602,8 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 									if sublist(predicate_object_map.object_map.child,row.keys()):
 										if child_list_value(predicate_object_map.object_map.child,row) in join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)]:
 											object_list = join_table[triples_map_inner.triples_map_id + "_" + child_list(predicate_object_map.object_map.child)][child_list_value(predicate_object_map.object_map.child,row)]
-											debug_object_list_size = max(debug_object_list_size, len(object_list))
-											debug_branch_label = "parent_triples_map_hit"
 										else:
 											object_list = []
-											debug_branch_label = "parent_triples_map_lookup_miss"
 									object = None
 								else:
 									try:
@@ -3391,7 +2773,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								triples_list.append(triple)
 			object_list = []
 		elif predicate != None and object != None and subject_list:
-			debug_subject_list_size = max(debug_subject_list_size, len(subject_list))
 			dictionary_table_update(object)
 			for subj in subject_list:
 				dictionary_table_update(subj)
@@ -3457,8 +2838,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 								triples_list.append(triple)
 		#	subject_list = []
 		elif predicate != None and object_list and subject_list:
-			debug_subject_list_size = max(debug_subject_list_size, len(subject_list))
-			debug_object_list_size = max(debug_object_list_size, len(object_list))
 			for subj in subject_list:
 				dictionary_table_update(subj)
 				for obj in object_list:
@@ -3547,8 +2926,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 					pom_output_payload,
 					runtime_row_token
 				)
-				equivalent_statement_cache_populates += 1
-				equivalent_statement_cache_owner_populates += 1
 				if no_inner_cycle and runtime_row_token is not None:
 					_stage_equivalent_join_indexes_for_row(
 						triples_map.triples_map_id,
@@ -3566,8 +2943,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 					pom_output_payload,
 					runtime_row_token
 				)
-				equivalent_statement_cache_populates += 1
-				equivalent_statement_cache_alias_populates += 1
 				if no_inner_cycle and runtime_row_token is not None:
 					_stage_equivalent_join_indexes_for_row(
 						triples_map.triples_map_id,
@@ -3587,17 +2962,6 @@ def semantify_file(triples_map, triples_map_list, delimiter, row, no_inner_cycle
 			row,
 			runtime_row_token
 		)
-	_record_tm_debug(
-		triples_map.triples_map_name,
-		debug_branch_label,
-		subject is not None,
-		object is not None,
-		debug_object_list_size,
-		debug_subject_list_size,
-		len(triples_list)
-	)
-	if semantify_file_start is not None:
-		_record_time_metric("semantify_file_total", time.perf_counter() - semantify_file_start)
 	return triples_list
 
 def semantify(config_path):
@@ -3612,146 +2976,29 @@ def semantify(config_path):
 
 	global duplicate
 	duplicate = config["datasets"]["remove_duplicate"]
-	# TM-PLANNING-RUNTIME:
-	# Optional runtime toggle for the planning-context summary added during the
-	# TM-level planning work. Keep this config-driven so normal runs stay quiet.
-	show_planning_context = config["datasets"].get("show_planning_context", "no").lower() == "yes"
-	# TM-CACHE-SANITY:
-	# Optional runtime toggle for read-only sanity checks around the cache
-	# foundations added during the execution-preparation phase.
-	show_cache_sanity = config["datasets"].get("show_cache_sanity", "no").lower() == "yes"
-	# PROFILING-TIME:
-	# Optional timing profiler for planner/cache/runtime hot spots. This is
-	# independent from memory profiling so each can be enabled on its own.
-	global show_time_breakdown
-	show_time_breakdown = config["datasets"].get("show_time_breakdown", "no").lower() == "yes"
-	# PROFILING-MEMORY:
-	# Optional process RSS checkpoint sampling. Kept separate from the timing
-	# profiler so users can inspect memory growth without turning on time metrics.
-	global show_memory_profile
-	show_memory_profile = config["datasets"].get("show_memory_profile", "no").lower() == "yes"
-	# TM-CACHE-SAME-ROW:
-	# First live cache toggle. This only affects same-source quoted reuse and
-	# falls back to the old recursive behavior on cache miss.
+	global enable_sdm_rdfizer_star_plus
+	enable_sdm_rdfizer_star_plus = config["datasets"].get("enable_sdm_rdfizer_star_plus", "no").lower() == "yes"
 	global enable_same_row_quoted_cache
-	enable_same_row_quoted_cache = config["datasets"].get("enable_same_row_quoted_cache", "no").lower() == "yes"
+	enable_same_row_quoted_cache = enable_sdm_rdfizer_star_plus
 	global same_row_cache_min_reference_count
 	same_row_cache_min_reference_count = int(config["datasets"].get("same_row_cache_min_reference_count", "2"))
-	# TM-CACHE-JOIN:
-	# Experimental toggle for the first quoted join-cache branch. Keep it
-	# separate from the same-row cache so join refactors can be isolated.
 	global enable_join_quoted_cache
-	enable_join_quoted_cache = config["datasets"].get("enable_join_quoted_cache", "no").lower() == "yes"
+	enable_join_quoted_cache = enable_sdm_rdfizer_star_plus
 	global enable_eager_join_prebuild
-	enable_eager_join_prebuild = config["datasets"].get("enable_eager_join_prebuild", "yes").lower() == "yes"
+	enable_eager_join_prebuild = (
+		enable_sdm_rdfizer_star_plus
+		and config["datasets"].get("enable_eager_join_prebuild", "no").lower() == "yes"
+	)
 	global enable_equivalent_statement_cache
-	enable_equivalent_statement_cache = config["datasets"].get("enable_equivalent_statement_cache", "yes").lower() == "yes"
-	# TM-CACHE-FLUSH:
-	# Optional runtime toggle for conservative level-based cache flushing driven
-	# by planning metadata and the current execution order.
+	enable_equivalent_statement_cache = enable_sdm_rdfizer_star_plus
 	global enable_level_cache_flush
-	enable_level_cache_flush = config["datasets"].get("enable_level_cache_flush", "no").lower() == "yes"
-	# TM-CACHE-LEVEL-EXECUTION:
-	# Optional level-aware execution wrapper. This keeps files_sort() as the
-	# secondary ordering rule inside each level instead of replacing it.
+	enable_level_cache_flush = enable_sdm_rdfizer_star_plus
 	global enable_level_execution_order
-	enable_level_execution_order = config["datasets"].get("enable_level_execution_order", "no").lower() == "yes"
-	# TM-CACHE-FLUSH:
-	# Optional per-event debug output for the flush logic. Keep separate from the
-	# aggregate sanity counters so the event trace is opt-in.
-	global show_cache_flush_debug
-	show_cache_flush_debug = config["datasets"].get("show_cache_flush_debug", "no").lower() == "yes"
-	global same_row_cache_hits
-	global same_row_cache_misses
-	global annotated_result_cache_hits
-	global annotated_result_cache_misses
-	global annotated_result_cache_writes
-	global annotated_result_cache_same_row_writes
-	global annotated_result_cache_join_materialization_writes
-	global annotated_result_cache_same_row_hits
-	global annotated_result_cache_join_materialization_hits
-	global annotated_result_cache_join_resolution_hits
-	global annotated_result_cache_cross_path_hits
-	global annotated_result_cache_join_resolution_misses
-	global quoted_join_index_prebuilds
-	global quoted_join_index_prebuild_skips
-	global equivalent_statement_cache_hits
-	global equivalent_statement_cache_misses
-	global equivalent_statement_cache_populates
-	global equivalent_statement_cache_owner_populates
-	global equivalent_statement_cache_alias_populates
-	global equivalent_statement_cache_owner_hits
-	global equivalent_statement_cache_alias_hits
-	global equivalent_join_cache_hits
-	global equivalent_join_cache_misses
-	global equivalent_join_cache_populates
-	global planner_same_row_cache_skips
-	global planner_join_cache_skips
-	global level_cache_flush_events
-	global flushed_same_row_cache_entries
-	global flushed_join_table_groups
-	global flushed_annotated_result_cache_entries
-	global flushed_equivalent_statement_cache_entries
-	global flushed_equivalent_join_cache_entries
+	enable_level_execution_order = enable_sdm_rdfizer_star_plus
 	global flushed_equivalent_statement_group_ids
-	global cache_flush_debug_events
-	global debug_tm_filters
-	global debug_tm_stats
-	global same_row_key_runtime_token_uses
-	global same_row_key_fallback_uses
-	global perf_time_stats
-	global perf_memory_samples
-	global perf_memory_peak_bytes
-	global perf_memory_supported
-	same_row_cache_hits = 0
-	same_row_cache_misses = 0
-	same_row_key_runtime_token_uses = 0
-	same_row_key_fallback_uses = 0
-	annotated_result_cache_hits = 0
-	annotated_result_cache_misses = 0
-	annotated_result_cache_writes = 0
-	annotated_result_cache_same_row_writes = 0
-	annotated_result_cache_join_materialization_writes = 0
-	annotated_result_cache_same_row_hits = 0
-	annotated_result_cache_join_materialization_hits = 0
-	annotated_result_cache_join_resolution_hits = 0
-	annotated_result_cache_cross_path_hits = 0
-	annotated_result_cache_join_resolution_misses = 0
-	quoted_join_index_prebuilds = 0
-	quoted_join_index_prebuild_skips = 0
-	equivalent_statement_cache_hits = 0
-	equivalent_statement_cache_misses = 0
-	equivalent_statement_cache_populates = 0
-	equivalent_statement_cache_owner_populates = 0
-	equivalent_statement_cache_alias_populates = 0
-	equivalent_statement_cache_owner_hits = 0
-	equivalent_statement_cache_alias_hits = 0
-	equivalent_join_cache_hits = 0
-	equivalent_join_cache_misses = 0
-	equivalent_join_cache_populates = 0
-	planner_same_row_cache_skips = 0
-	planner_join_cache_skips = 0
-	level_cache_flush_events = 0
-	flushed_same_row_cache_entries = 0
-	flushed_join_table_groups = 0
-	flushed_annotated_result_cache_entries = 0
-	flushed_equivalent_statement_cache_entries = 0
-	flushed_equivalent_join_cache_entries = 0
 	flushed_equivalent_statement_group_ids = set()
-	cache_flush_debug_events = []
-	debug_tm_filters = [
-		part.strip()
-		for part in config["datasets"].get("debug_tm_filters", "").split(",")
-		if part.strip()
-	]
-	debug_tm_stats = {}
-	perf_time_stats = {}
-	perf_memory_samples = []
-	perf_memory_peak_bytes = 0
-	perf_memory_supported = False
 
 	global annotated_result_cache
-	global annotated_result_cache_origins
 	global equivalent_statement_cache
 	global equivalent_statement_cache_groups
 	global equivalent_join_cache
@@ -3760,7 +3007,6 @@ def semantify(config_path):
 	global staged_equivalent_join_cache
 	global active_planning_context
 	annotated_result_cache = {}
-	annotated_result_cache_origins = {}
 	equivalent_statement_cache = {}
 	equivalent_statement_cache_groups = {}
 	equivalent_join_cache = {}
@@ -3768,7 +3014,6 @@ def semantify(config_path):
 	staged_join_table = {}
 	staged_equivalent_join_cache = {}
 	active_planning_context = None
-	_capture_memory_sample("run_start")
 
 	enrichment = config["datasets"]["enrichment"]
 
@@ -3786,40 +3031,16 @@ def semantify(config_path):
 				dataset_i = "dataset" + str(int(dataset_number) + 1)
 				with _time_metric("mapping_parser"):
 					triples_map_list = mapping_parser(config[dataset_i]["mapping"])
-				_capture_memory_sample(f"{dataset_i}:mapping_parsed")
 				with _time_metric("analyze_tm_levels"):
 					tm_levels = analyze_tm_levels(triples_map_list)
-				print(format_tm_levels_summary(tm_levels))
-				planning_context_required = (
-					show_planning_context
-					or enable_same_row_quoted_cache
-					or enable_join_quoted_cache
-					or enable_equivalent_statement_cache
-					or enable_level_cache_flush
-					or enable_level_execution_order
-				)
+				planning_context_required = enable_sdm_rdfizer_star_plus
 				if planning_context_required:
 					with _time_metric("build_planning_context"):
 						planning_context = build_planning_context(triples_map_list, tm_levels)
 					active_planning_context = planning_context
-					_capture_memory_sample(f"{dataset_i}:planning_ready")
 				else:
 					planning_context = None
 					active_planning_context = None
-				# TM-PLANNING-RUNTIME:
-				# Print the planning summary only when explicitly requested, but
-				# allow runtime planner-aware features to reuse the same metadata.
-				if show_planning_context:
-					print(format_planning_context_summary(planning_context))
-				if show_cache_sanity:
-					print(format_cache_foundation_sanity(planning_context))
-					print(f"  same_row_cache_enabled={enable_same_row_quoted_cache}")
-					print(f"  join_quoted_cache_enabled={enable_join_quoted_cache}")
-					print(f"  equivalent_statement_cache_enabled={enable_equivalent_statement_cache}")
-					print(f"  level_cache_flush_enabled={enable_level_cache_flush}")
-					print(f"  level_execution_order_enabled={enable_level_execution_order}")
-					print(f"  cache_flush_debug_enabled={show_cache_flush_debug}")
-				print(f"Sanity: parsed {len(triples_map_list)} triples maps from {config[dataset_i]['mapping']}")
 				global base
 				base = extract_base(config[dataset_i]["mapping"])
 				output_file = config["datasets"]["output_folder"] + "/" + config[dataset_i]["name"] + ".nt"
@@ -3832,7 +3053,6 @@ def semantify(config_path):
 					_prebuild_high_join_indexes(planning_context, triples_map_list)
 					remaining_execution_tm_ids = set(_build_asserted_tm_execution_order_from_batches(sorted_sources, execution_batches))
 					flushed_tm_ids = set()
-					_capture_memory_sample(f"{dataset_i}:execution_batches_ready")
 					if sorted_sources:
 						for source_type, source, tm_keys in execution_batches:
 							if source_type == "csv":
@@ -3895,19 +3115,6 @@ def semantify(config_path):
 									print("Aborting...")
 									sys.exit(1)
 					_flush_completed_tm_caches(planning_context, set(), flushed_tm_ids)
-					_capture_memory_sample(f"{dataset_i}:post_flush")
-				if show_cache_sanity:
-					print(format_cache_foundation_sanity(planning_context))
-					print(f"  same_row_cache_enabled={enable_same_row_quoted_cache}")
-					print(f"  join_quoted_cache_enabled={enable_join_quoted_cache}")
-					print(f"  equivalent_statement_cache_enabled={enable_equivalent_statement_cache}")
-					print(f"  level_cache_flush_enabled={enable_level_cache_flush}")
-					print(f"  level_execution_order_enabled={enable_level_execution_order}")
-					print(f"  cache_flush_debug_enabled={show_cache_flush_debug}")
-				if show_cache_flush_debug:
-					print(format_cache_flush_debug_events())
-				if debug_tm_filters:
-					print(format_tm_debug_stats())
 				print("Successfully semantified {}.\n\n".format(config[dataset_i]["name"]))
 	else:
 		output_file = config["datasets"]["output_folder"] + "/" + config["datasets"]["name"] + ".nt"
@@ -3918,39 +3125,16 @@ def semantify(config_path):
 					dataset_i = "dataset" + str(int(dataset_number) + 1)
 					with _time_metric("mapping_parser"):
 						triples_map_list = mapping_parser(config[dataset_i]["mapping"])
-					_capture_memory_sample(f"{dataset_i}:mapping_parsed")
 					with _time_metric("analyze_tm_levels"):
 						tm_levels = analyze_tm_levels(triples_map_list)
-					print(format_tm_levels_summary(tm_levels))
-					planning_context_required = (
-						show_planning_context
-						or enable_same_row_quoted_cache
-						or enable_join_quoted_cache
-						or enable_equivalent_statement_cache
-						or enable_level_cache_flush
-						or enable_level_execution_order
-					)
+					planning_context_required = enable_sdm_rdfizer_star_plus
 					if planning_context_required:
 						with _time_metric("build_planning_context"):
 							planning_context = build_planning_context(triples_map_list, tm_levels)
 						active_planning_context = planning_context
-						_capture_memory_sample(f"{dataset_i}:planning_ready")
 					else:
 						planning_context = None
 						active_planning_context = None
-					# TM-PLANNING-RUNTIME:
-					# Same summary hook for the all-in-one-file branch so both
-					# execution paths expose the same planning metadata.
-					if show_planning_context:
-						print(format_planning_context_summary(planning_context))
-					if show_cache_sanity:
-						print(format_cache_foundation_sanity(planning_context))
-						print(f"  same_row_cache_enabled={enable_same_row_quoted_cache}")
-						print(f"  join_quoted_cache_enabled={enable_join_quoted_cache}")
-						print(f"  equivalent_statement_cache_enabled={enable_equivalent_statement_cache}")
-						print(f"  level_cache_flush_enabled={enable_level_cache_flush}")
-						print(f"  level_execution_order_enabled={enable_level_execution_order}")
-						print(f"  cache_flush_debug_enabled={show_cache_flush_debug}")
 					base = extract_base(config[dataset_i]["mapping"])
 					output_file = config["datasets"]["output_folder"] + "/" + config[dataset_i]["name"] + ".nt"
 
@@ -3962,7 +3146,6 @@ def semantify(config_path):
 					_prebuild_high_join_indexes(planning_context, triples_map_list)
 					remaining_execution_tm_ids = set(_build_asserted_tm_execution_order_from_batches(sorted_sources, execution_batches))
 					flushed_tm_ids = set()
-					_capture_memory_sample(f"{dataset_i}:execution_batches_ready")
 					if sorted_sources:
 						for source_type, source, tm_keys in execution_batches:
 							if source_type == "csv":
@@ -4013,26 +3196,8 @@ def semantify(config_path):
 									print("Aborting...")
 									sys.exit(1)
 					_flush_completed_tm_caches(planning_context, set(), flushed_tm_ids)
-					_capture_memory_sample(f"{dataset_i}:post_flush")
-					if show_cache_sanity:
-						print(format_cache_foundation_sanity(planning_context))
-						print(f"  same_row_cache_enabled={enable_same_row_quoted_cache}")
-						print(f"  join_quoted_cache_enabled={enable_join_quoted_cache}")
-						print(f"  equivalent_statement_cache_enabled={enable_equivalent_statement_cache}")
-						print(f"  level_cache_flush_enabled={enable_level_cache_flush}")
-						print(f"  level_execution_order_enabled={enable_level_execution_order}")
-						print(f"  cache_flush_debug_enabled={show_cache_flush_debug}")
-					if show_cache_flush_debug:
-						print(format_cache_flush_debug_events())
-					if debug_tm_filters:
-						print(format_tm_debug_stats())
 					print("Successfully semantified {}.\n\n".format(config[dataset_i]["name"]))
 
 	duration = time.time() - start_time
-	_capture_memory_sample("run_end")
 
 	print("Successfully semantified all datasets in {:.3f} seconds.".format(duration))
-	if show_time_breakdown:
-		print(format_time_breakdown(duration))
-	if show_memory_profile:
-		print(format_memory_profile())

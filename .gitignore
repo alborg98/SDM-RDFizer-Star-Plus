@@ -1,32 +1,38 @@
-# Virtual environments
-.venv/
-.direnv/
-output/
-artifacts/
-mapping.ttl
+# Default: ignore everything unless explicitly allowlisted below.
+*
 
-# Python cache
-__pycache__/
-*.pyc
+# Core repo metadata and top-level docs.
+!.gitignore
+!README.md
+!requirements.txt
 
-# macOS
-.DS_Store
-.vscode/
+# Entrypoints.
+!run_rdfizer.py
+!visualize_rdf.py
 
-# Production session files
-CHAT_CONTEXT_RML_STAR_PLANNING.md
-_main_baseline/
-optimized_*.log
-baseline_equivalence_benchmark_10000_no_prebuild.log
-baseline_equivalence_cross_source_multilayer_10000_no_prebuild.log
-baseline_equivalence_owner_slice_flush_10000_no_prebuild.log
-baseline_equivalence_owner_slice_flush_10000_prebuild_on_fresh.log
+# Visualizer support assets.
+!lib/
+!lib/**
 
-# Actual data files and output files
-data/*
-config_*
-mapping_*
-config.ini
-scenarios/**/config.ini
-scenarios/**/mapping.ttl
-dist/
+# Engine source.
+!rdfizer_star/
+!rdfizer_star/**
+rdfizer_star/**/__pycache__/
+rdfizer_star/**/*.py[cod]
+
+# Keep one small runnable reference scenario in-repo.
+!scenarios/
+scenarios/*
+!scenarios/composite_quoted_probe/
+!scenarios/composite_quoted_probe/**
+scenarios/composite_quoted_probe/output/
+scenarios/composite_quoted_probe/results/
+scenarios/composite_quoted_probe/materialized/
+scenarios/composite_quoted_probe/**/__pycache__/
+
+# Optional thesis slot: when you provide the PDF, place it here and it will be tracked.
+!docs/
+docs/*
+!docs/thesis/
+docs/thesis/*
+!docs/thesis/master_thesis.pdf

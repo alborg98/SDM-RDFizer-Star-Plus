@@ -1,0 +1,84 @@
+@prefix rr:  <http://www.w3.org/ns/r2rml#> .
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ql:  <http://semweb.mmlab.be/ns/ql#> .
+@prefix ex:  <http://example.org/> .
+
+<#BaseRecordTM>
+    a rml:NonAssertedTriplesMap ;
+    rml:logicalSource [
+        rml:source "scenarios/composite_quoted_probe/ratings.csv" ;
+        rml:referenceFormulation ql:CSV
+    ] ;
+    rml:subjectMap [
+        rml:template "http://example.org/rating/{userId}/{movieId}" ;
+        rr:termType rr:IRI
+    ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:ratedMovie ;
+        rml:objectMap [
+            rml:template "http://example.org/movie/{movieId}" ;
+            rr:termType rr:IRI
+        ]
+    ] .
+
+<#AuditIsolatedTM>
+    a rml:NonAssertedTriplesMap ;
+    rml:logicalSource [
+        rml:source "scenarios/composite_quoted_probe/ratings.csv" ;
+        rml:referenceFormulation ql:CSV
+    ] ;
+    rml:subjectMap [
+        rml:quotedTriplesMap <#BaseRecordTM>
+    ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:auditTag ;
+        rml:objectMap [
+            rml:template "http://example.org/audit/{userId}/{movieId}" ;
+            rr:termType rr:IRI
+        ]
+    ] .
+
+<#AnnotationProjectionTM>
+    a rml:AssertedTriplesMap ;
+    rml:logicalSource [
+        rml:source "scenarios/composite_quoted_probe/annotations.csv" ;
+        rml:referenceFormulation ql:CSV
+    ] ;
+    rml:subjectMap [
+        rml:quotedTriplesMap <#AuditIsolatedTM> ;
+        rml:joinCondition [ rml:child "userId" ; rml:parent "userId" ] ;
+        rml:joinCondition [ rml:child "movieId" ; rml:parent "movieId" ]
+    ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:note ;
+        rml:objectMap [
+            rml:reference "note" ;
+            rr:termType rr:Literal
+        ]
+    ] .
+
+<#AnnotationLinkTM>
+    a rml:AssertedTriplesMap ;
+    rml:logicalSource [
+        rml:source "scenarios/composite_quoted_probe/annotations.csv" ;
+        rml:referenceFormulation ql:CSV
+    ] ;
+    rml:subjectMap [
+        rml:template "http://example.org/annotation/{aid}" ;
+        rr:termType rr:IRI
+    ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:aboutAudit ;
+        rml:objectMap [
+            rml:quotedTriplesMap <#AuditIsolatedTM> ;
+            rml:joinCondition [ rml:child "userId" ; rml:parent "userId" ] ;
+            rml:joinCondition [ rml:child "movieId" ; rml:parent "movieId" ]
+        ]
+    ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:noteId ;
+        rml:objectMap [
+            rml:reference "aid" ;
+            rr:termType rr:Literal
+        ]
+    ] .

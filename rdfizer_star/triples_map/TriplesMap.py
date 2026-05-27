@@ -70,6 +70,11 @@ class TriplesMap:
 		return value + "\n"
 
 class SubjectMap:
+
+	def _normalize_join_endpoint(self, value):
+		if value in (None, "None"):
+			return None
+		return value
 	
 	def __init__(self, subject_value, condition, subject_mapping_type, parent, child, rdf_class=None, term_type=None, graph=None):
 
@@ -90,8 +95,8 @@ class SubjectMap:
 		self.term_type = term_type
 		self.subject_mapping_type = subject_mapping_type
 		self.graph = graph
-		self.child = str(child) if "None" != child else None
-		self.parent = str(parent) if "None" != parent else None
+		self.child = self._normalize_join_endpoint(child)
+		self.parent = self._normalize_join_endpoint(parent)
 
 class PredicateObjectMap:
 	
@@ -136,6 +141,11 @@ class PredicateMap:
 
 class ObjectMap:
 
+	def _normalize_join_endpoint(self, value):
+		if value in (None, "None"):
+			return None
+		return value
+
 	def __init__(self, object_mapping_type, object_value, object_datatype, object_child, object_parent, term, language, language_map):
 
 		"""
@@ -153,8 +163,8 @@ class ObjectMap:
 		self.value = object_value
 		self.datatype = object_datatype if object_datatype != "None" else None 
 		self.mapping_type = object_mapping_type
-		self.child = object_child if "None" not in object_child  else None
-		self.parent = object_parent if "None" not in object_parent else None
+		self.child = self._normalize_join_endpoint(object_child)
+		self.parent = self._normalize_join_endpoint(object_parent)
 		self.term = term if term != "None" else None
 		self.language = language if language != "None" else None
 		self.language_map = language_map if language_map != "None" else None
