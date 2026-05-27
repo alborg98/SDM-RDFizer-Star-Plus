@@ -18,9 +18,10 @@ rdfizer_star/**/*.py[cod]
 # Scenarios: local development only, not tracked.
 scenarios/
 
-# Optional thesis slot: when you provide the PDF, place it here and it will be tracked.
+# Docs: thesis PDF and architecture diagram.
 !docs/
 docs/*
+!docs/architecture.png
 !docs/thesis/
 docs/thesis/*
 !docs/thesis/master_thesis.pdf
